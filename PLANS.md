@@ -15,7 +15,7 @@ Goal: build an exact-math craps betting-strategy engine, one reviewable task at 
 | 9 | bets/odds.py — Free Odds (take/lay) | ✅ Done | `7e2654f` |
 | 10 | bets/place.py — Place 4/5/6/8/9/10 | ✅ Done | `c06f940` |
 | 11 | portfolio.py — PortfolioAnalyzer (dual-lens) | ✅ Done | `fe611c0` |
-| 12 | examples/ — hedged demo + integration test | ⬜ Pending | |
+| 12 | examples/ — hedged demo + integration test | ✅ Done | `b663a22` |
 | 13 | Final quality gate + docs sync | ⬜ Pending | |
 
 Status legend: ✅ Done · 🚧 In progress · ⬜ Pending. Commit = short SHA of the commit completing the item.
