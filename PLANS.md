@@ -14,7 +14,7 @@ Goal: build an exact-math craps betting-strategy engine, one reviewable task at 
 | 8 | bets/line.py — Pass Line & Don't Pass | ✅ Done | `85fb4d3` |
 | 9 | bets/odds.py — Free Odds (take/lay) | ✅ Done | `7e2654f` |
 | 10 | bets/place.py — Place 4/5/6/8/9/10 | ✅ Done | `c06f940` |
-| 11 | portfolio.py — PortfolioAnalyzer (dual-lens) | ⬜ Pending | |
+| 11 | portfolio.py — PortfolioAnalyzer (dual-lens) | ✅ Done | `fe611c0` |
 | 12 | examples/ — hedged demo + integration test | ⬜ Pending | |
 | 13 | Final quality gate + docs sync | ⬜ Pending | |
 
