@@ -42,3 +42,50 @@ the mathematical advantage. This is exactly why the dual-lens EV matters: the
 hedge demo shows a **positive single-roll EV** (lens A) alongside a **negative
 long-run house_drag** (lens B). The two numbers describe different questions and
 must not be conflated.
+
+## Execution notes & gotchas (Phase 1 build)
+
+Non-obvious facts discovered during the build — the would-rediscover-the-hard-way
+items. Each file/flag claim below was re-verified against the tree at finalize time.
+
+- **Single-file pytest coverage gotcha.** `pyproject.toml` sets a global
+  `--cov-fail-under=90` in `[tool.pytest.ini_options] addopts`. Running a SINGLE
+  test file (e.g. `uv run pytest tests/test_x.py`) still measures coverage
+  package-wide but only runs that file's tests, so it SPURIOUSLY reports
+  ~50-80% and exits non-zero even when that file's own tests all pass. Only the
+  full `uv run pytest` is a valid coverage gate.
+- **Secrets pre-commit hook.** The environment has a secret-detection pre-commit
+  hook that REJECTS a commit staging an untracked `.env` (it contains
+  commented-out API keys). `.env` is gitignored. Always stage explicit paths
+  (`git add <files>`), never `git add -A`, or the hook blocks the commit.
+- **Python 3.11 Fraction format gotcha.** `f"{some_fraction:+}"` /
+  `format(Fraction, "+")` raises
+  `TypeError: unsupported format string passed to Fraction.__format__`. To show a
+  signed fraction, build the sign manually (`abs(value)` + an explicit `"+"`/`"-"`
+  prefix). `serialize_fraction` (in `money.py`) is the single float/display
+  boundary — keep Fraction exact internally everywhere else.
+- **Dual-lens insight (the core teaching point).** A Don't-Pass bettor is the
+  FAVORITE once a point is established (the house edge was already paid at
+  come-out via the bar-12 push and the 7/11 come-out losses). So
+  `PortfolioAnalyzer.single_roll_ev` (Lens A) can be POSITIVE for a hedge in the
+  point phase while `house_drag` (Lens B, long-run cost) is a positive expected
+  loss. Both lenses are reported precisely because they tell different,
+  both-correct stories. Worked example (DP 10 + Place 6/8 of 6, point 4): per-roll
+  matrix 4 -> -10, 6 -> +7, 7 -> -2, 8 -> +7; Lens A = 7/9 ≈ +0.78;
+  Lens B = 7/22 ≈ 0.318.
+- **Conventions worth knowing for Phase 2.** Every serializable domain value uses
+  a per-module `TypedDict` payload (`FractionPayload`, `BetPayload`,
+  `OddsBetPayload`, `PlaceBetPayload`, `PortfolioReport`, etc.).
+  `PortfolioAnalyzer._house_edge` dispatches by concrete bet type and RAISES
+  `TypeError` on unknown bet types (so drag is never silently under-counted) —
+  new Phase 2 bet types MUST be added there. Place bets are OFF on the come-out by
+  default (`PlaceBet(working=False)`); in the POINT phase they are live regardless
+  of the flag.
+- **Test/import note.** `examples/` has no `__init__.py` (ruff INP001 is
+  intentionally ignored for examples). The integration test imports it as an
+  implicit namespace package, which works because `tests/__init__.py` puts the
+  repo root on `sys.path`.
+- **MCP session config (environment).** To run this project without the
+  `adk-docs` / `google-dev-knowledge` MCP servers, launch with
+  `claude --strict-mcp-config --mcp-config ~/.claude/marcy-dice-mcp.json` (that
+  file keeps only paperbanana + bigquery; it lives outside the repo).

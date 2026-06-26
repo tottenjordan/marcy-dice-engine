@@ -16,6 +16,21 @@ Goal: build an exact-math craps betting-strategy engine, one reviewable task at 
 | 10 | bets/place.py — Place 4/5/6/8/9/10 | ✅ Done | `c06f940` |
 | 11 | portfolio.py — PortfolioAnalyzer (dual-lens) | ✅ Done | `fe611c0` |
 | 12 | examples/ — hedged demo + integration test | ✅ Done | `b663a22` |
-| 13 | Final quality gate + docs sync | ⬜ Pending | |
+| 13 | Final quality gate + docs sync | ✅ Done | `PENDING` |
 
 Status legend: ✅ Done · 🚧 In progress · ⬜ Pending. Commit = short SHA of the commit completing the item.
+
+## Phase 2 backlog
+
+Future scope, deliberately out of Phase 1:
+
+- **Come / Don't Come bet classes.** The `GameState` machine is already designed
+  to admit sub-points, so these slot in without a state-model rewrite.
+- **Monte Carlo engine.** 10,000-session simulation with bankroll trajectories
+  and Risk of Ruin.
+- **UI / visualization layer.** All engine return types are already
+  serialization-ready (`to_dict` + per-module `TypedDict` payloads), so the UI
+  needs no engine changes.
+- **Optional bets beyond Phase 1.** Field, hardways, buy/lay with commission,
+  and other proposition bets. New bet types must also be registered in
+  `PortfolioAnalyzer._house_edge` so house drag stays exact.
