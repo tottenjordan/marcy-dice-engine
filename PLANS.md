@@ -9,7 +9,7 @@ Goal: build an exact-math craps betting-strategy engine, one reviewable task at 
 | 3 | money.py — Fraction odds + serialization | ✅ Done | `0a0c0c2, 681187d` |
 | 4 | dice.py — random + deterministic dice | ✅ Done | `8bd6d0e` |
 | 5 | registry.py — odds/payout/house-edge table | ✅ Done | `c556c31` |
-| 6 | state.py — GameState machine | ⬜ Pending | |
+| 6 | state.py — GameState machine | ✅ Done | `8eaf78c` |
 | 7 | bets/base.py — Bet ABC + Resolution | ⬜ Pending | |
 | 8 | bets/line.py — Pass Line & Don't Pass | ⬜ Pending | |
 | 9 | bets/odds.py — Free Odds (take/lay) | ⬜ Pending | |
