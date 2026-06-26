@@ -20,6 +20,27 @@ Goal: build an exact-math craps betting-strategy engine, one reviewable task at 
 
 Status legend: ✅ Done · 🚧 In progress · ⬜ Pending. Commit = short SHA of the commit completing the item.
 
+## Phase 2 (in progress)
+
+Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Order A → B → C.
+
+| # | Item | Status | Commit |
+|---|---|---|---|
+| A1 | bets/come.py — ComeBet traveling-state resolution | ✅ Done | `4bc171c` |
+| A2 | ComeBet established play + establish_come_point mutator | ⬜ Pending | |
+| A3 | bets/come.py — DontCome (bar 12) | ⬜ Pending | |
+| A4 | portfolio.py — register come/don't-come in house-drag | ⬜ Pending | |
+| B1 | bets/base.py — lifecycle hooks (remains_on_table, advance) | ⬜ Pending | |
+| B2 | strategy.py — Strategy protocol + starter strategies | ⬜ Pending | |
+| B3 | session.py — Table + run_session single-session runner | ⬜ Pending | |
+| B4 | montecarlo.py — Monte Carlo simulator + risk of ruin | ⬜ Pending | |
+| B5 | examples/simulate_strategies.py — strategy comparison demo | ⬜ Pending | |
+| C1 | pyproject.toml — textual ui group, entry point, coverage | ⬜ Pending | |
+| C2 | craps_tui/golden.py — golden-verify math self-check | ⬜ Pending | |
+| C3 | craps_tui/viewmodel.py — pure view-model/formatters | ⬜ Pending | |
+| C4 | craps_tui/app.py — Textual calculator app + verify screen | ⬜ Pending | |
+| C5 | docs sync — CLAUDE.md + README.md for the TUI | ⬜ Pending | |
+
 ## Phase 2 backlog
 
 Future scope, deliberately out of Phase 1:
