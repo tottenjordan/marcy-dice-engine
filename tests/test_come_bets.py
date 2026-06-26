@@ -137,3 +137,63 @@ def test_come_accepts_int_amount_and_none_come_point() -> None:
 def test_come_accepts_each_valid_come_point() -> None:
     for p in (4, 5, 6, 8, 9, 10):
         assert ComeBet("c", 10, come_point=p).come_point == p
+
+
+# ---------------------------------------------------------------------------
+# establish_come_point mutator: the ONLY path that sets come_point.
+# ---------------------------------------------------------------------------
+def test_establish_come_point_on_fresh_bet_sets_and_returns_true() -> None:
+    bet = ComeBet("c", Fraction(10))
+    assert bet.establish_come_point(6) is True
+    assert bet.come_point == 6
+
+
+def test_establish_come_point_is_one_shot() -> None:
+    bet = ComeBet("c", Fraction(10))
+    bet.establish_come_point(6)
+    assert bet.establish_come_point(8) is False  # already traveling
+    assert bet.come_point == 6  # unchanged
+
+
+def test_establish_come_point_rejects_seven() -> None:
+    bet = ComeBet("c", Fraction(10))
+    assert bet.establish_come_point(7) is False
+    assert bet.come_point is None
+
+
+def test_establish_come_point_rejects_craps_number() -> None:
+    bet = ComeBet("c", Fraction(10))
+    assert bet.establish_come_point(2) is False
+    assert bet.come_point is None
+
+
+def test_establish_come_point_for_every_valid_point() -> None:
+    for p in (4, 5, 6, 8, 9, 10):
+        bet = ComeBet("c", Fraction(10))
+        assert bet.establish_come_point(p) is True
+        assert bet.come_point == p
+
+
+def test_establish_come_point_does_not_break_resolve_purity() -> None:
+    # resolve must NOT establish the come-point: only the mutator does.
+    bet = ComeBet("c", Fraction(10))
+    bet.resolve(DiceRoll(3, 3), GameState())  # 6 would establish
+    assert bet.come_point is None
+
+
+# ---------------------------------------------------------------------------
+# to_dict: the come-point round-trips alongside the base bet fields.
+# ---------------------------------------------------------------------------
+def test_to_dict_traveling_has_none_come_point_and_base_keys() -> None:
+    d = ComeBet("c", Fraction(10)).to_dict()
+    assert d["come_point"] is None
+    assert d["id"] == "c"
+    assert d["type"] == "ComeBet"
+    assert d["working"] is True
+    assert "amount" in d
+
+
+def test_to_dict_established_round_trips_come_point() -> None:
+    d = ComeBet("c", Fraction(10), come_point=6).to_dict()
+    assert d["come_point"] == 6
+    assert d["type"] == "ComeBet"

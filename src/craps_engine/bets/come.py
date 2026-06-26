@@ -38,7 +38,7 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import TYPE_CHECKING
 
-from craps_engine.bets.base import Bet, Resolution, ResolutionStatus
+from craps_engine.bets.base import Bet, BetPayload, Resolution, ResolutionStatus
 from craps_engine.registry import REGISTRY
 
 if TYPE_CHECKING:
@@ -57,6 +57,17 @@ _PASS_CRAPS = frozenset({2, 3, 12})  # Come LOSES while coming (12 is NOT barred
 
 # The seven, named for readability at its use sites.
 _SEVEN = 7
+
+
+class ComeBetPayload(BetPayload):
+    """Serialized shape of a come bet: the base bet payload plus its come-point.
+
+    Extends :class:`~craps_engine.bets.base.BetPayload` with the travelling
+    ``come_point`` (``None`` while the bet is still coming) so the wager's
+    private come-point round-trips through serialization.
+    """
+
+    come_point: int | None
 
 
 class ComeBet(Bet):
@@ -94,6 +105,37 @@ class ComeBet(Bet):
         super().__init__(id, amount, working=working)
         #: The come-point this bet is travelling on, or ``None`` while coming.
         self.come_point = come_point
+
+    def establish_come_point(self, total: int) -> bool:
+        """Bind the come-point to ``total`` -- the ONLY mutation path for it.
+
+        Establishment is funneled exclusively through this mutator so that
+        :meth:`resolve` can stay strictly pure (it never sets
+        :attr:`come_point`). Returns ``True`` and sets the come-point only when
+        the bet is still coming (:attr:`come_point` is ``None``) AND ``total`` is
+        a real point number (4,5,6,8,9,10). Otherwise -- already travelling, or
+        ``total`` is a 7/11 or a craps number -- it leaves the bet untouched and
+        returns ``False``.
+        """
+        if self.come_point is None and total in _VALID_POINTS:
+            self.come_point = total
+            return True
+        return False
+
+    def to_dict(self) -> ComeBetPayload:
+        """Serialize, adding ``come_point`` to the base bet payload.
+
+        Extends :meth:`Bet.to_dict` so the travelling come-point round-trips
+        alongside the id/type/amount/working fields shared by every bet.
+        """
+        base = super().to_dict()
+        return {
+            "id": base["id"],
+            "type": base["type"],
+            "amount": base["amount"],
+            "working": base["working"],
+            "come_point": self.come_point,
+        }
 
     def resolve(self, roll: DiceRoll, state: GameState) -> Resolution:
         """Settle the come bet against one roll, IGNORING the table phase.
