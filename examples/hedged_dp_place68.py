@@ -38,7 +38,7 @@ from fractions import Fraction
 
 from craps_engine.bets.line import DontPass
 from craps_engine.bets.place import PlaceBet
-from craps_engine.money import serialize_fraction
+from craps_engine.money import FractionPayload, serialize_fraction
 from craps_engine.portfolio import PortfolioAnalyzer, PortfolioReport
 from craps_engine.state import GameState
 
@@ -80,7 +80,7 @@ def build_report() -> PortfolioReport:
     return build_portfolio().report(build_state())
 
 
-def _format_matrix_row(matrix: dict[int, object]) -> str:
+def _format_matrix_row(matrix: dict[int, FractionPayload]) -> str:
     """Render the per-total net deltas as a compact, signed one-liner.
 
     Each total maps to a serialized Fraction payload; we read its lossless
@@ -90,14 +90,16 @@ def _format_matrix_row(matrix: dict[int, object]) -> str:
     parts: list[str] = []
     for total in _TOTALS:
         payload = matrix[total]
-        # payload is a FractionPayload; reconstruct the exact value for display.
-        num, denom = payload["exact"].split("/")  # type: ignore[index]
+        # Reconstruct the exact value for display from the lossless payload.
+        num, denom = payload["exact"].split("/")
         value = Fraction(int(num), int(denom))
         # Fraction has no "+" presentation spec, so build the signed token by
-        # hand. Whole-dollar deltas (denominator 1) read as plain ints.
-        magnitude = str(value.numerator) if value.denominator == 1 else str(value)
+        # hand from the magnitude. Whole-dollar deltas (denominator 1) read as
+        # plain ints; the sign is prefixed explicitly.
+        magnitude = abs(value)
+        token = magnitude.numerator if magnitude.denominator == 1 else magnitude
         sign = "-" if value < 0 else "+"
-        parts.append(f"{total}: {sign}{magnitude.lstrip('-')}")
+        parts.append(f"{total}: {sign}{token}")
     return ", ".join(parts)
 
 
