@@ -43,6 +43,14 @@ def test_take_odds_win_point_6_pays_true_6to5() -> None:
     assert r.delta == Fraction(6)  # 5 * (6/5)
 
 
+def test_take_odds_win_point_5_pays_true_3to2() -> None:
+    # Exact non-integer Fraction payout: 5 * (3/2) = 15/2. Asserting the exact
+    # Fraction (not a float) guards this project's core exact-math guarantee.
+    r = TakeOdds("t", 5, Fraction(5)).resolve(DiceRoll(2, 3), _state_point(5))  # 5
+    assert r.status is ResolutionStatus.WIN
+    assert r.delta == Fraction(15, 2)
+
+
 def test_take_odds_seven_out_loses() -> None:
     r = TakeOdds("t", 4, Fraction(5)).resolve(DiceRoll(3, 4), _state_point(4))  # 7
     assert r.status is ResolutionStatus.LOSE
