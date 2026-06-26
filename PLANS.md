@@ -7,7 +7,7 @@ Goal: build an exact-math craps betting-strategy engine, one reviewable task at 
 | 1 | Scaffold uv package + tooling | ✅ Done | `743d70e` |
 | 2 | Governance docs (CODE_STANDARDS, CLAUDE, PLANS, notes) | ✅ Done | `7204a1c` |
 | 3 | money.py — Fraction odds + serialization | ✅ Done | `0a0c0c2, 681187d` |
-| 4 | dice.py — random + deterministic dice | ⬜ Pending | |
+| 4 | dice.py — random + deterministic dice | ✅ Done | `8bd6d0e` |
 | 5 | registry.py — odds/payout/house-edge table | ⬜ Pending | |
 | 6 | state.py — GameState machine | ⬜ Pending | |
 | 7 | bets/base.py — Bet ABC + Resolution | ⬜ Pending | |
