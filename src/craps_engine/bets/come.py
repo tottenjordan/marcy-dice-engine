@@ -137,6 +137,21 @@ class _ComeBet(Bet):
             return True
         return False
 
+    def advance(self, roll: DiceRoll, resolution: Resolution) -> None:
+        """Establish the come-point on a point-number roll (the travelling step).
+
+        The come family's per-roll transition: after :meth:`resolve` reports a
+        point number, this funnels the lone mutation through
+        :meth:`establish_come_point`, which sets :attr:`come_point` ONLY while the
+        bet is still coming AND ``roll.total`` is a real point (4,5,6,8,9,10) --
+        a 7/11 or a craps number, or an already-travelling bet, leaves it
+        untouched. Both subclasses inherit this, so :meth:`resolve` stays strictly
+        pure. ``resolution`` is unused (the roll total alone decides) but is kept
+        for the shared hook signature.
+        """
+        del resolution  # Establishment keys only on the roll total.
+        self.establish_come_point(roll.total)
+
     def to_dict(self) -> _ComeBetPayload:
         """Serialize, adding ``come_point`` to the base bet payload.
 

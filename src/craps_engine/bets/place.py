@@ -105,6 +105,23 @@ class PlaceBet(Bet):
         # COME_OUT: only live if the player turned the place bet on.
         return self.working
 
+    def remains_on_table(self, resolution: Resolution, roll: DiceRoll) -> bool:
+        """Keep a place bet up after a WIN too -- it is a STANDING wager.
+
+        A place bet stays on the felt after its number hits (the stake remains
+        working, ready to win again), so it differs from the base
+        :meth:`Bet.remains_on_table` default by ALSO surviving a WIN. It still
+        stays up on NO_ACTION/PUSH and only comes down on a LOSE (the seven-out
+        that sweeps it). ``roll`` is unused (the status alone decides) but is kept
+        for the shared hook signature.
+        """
+        del roll  # Keying only on the resolution status.
+        return resolution.status in {
+            ResolutionStatus.WIN,
+            ResolutionStatus.NO_ACTION,
+            ResolutionStatus.PUSH,
+        }
+
     def to_dict(self) -> PlaceBetPayload:
         """Serialize, adding ``number`` to the base bet payload.
 

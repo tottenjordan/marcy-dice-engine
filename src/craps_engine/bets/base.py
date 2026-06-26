@@ -168,6 +168,34 @@ class Bet(ABC):
         """
         ...
 
+    def remains_on_table(self, resolution: Resolution, roll: DiceRoll) -> bool:
+        """Whether this bet stays working after ``resolution`` this roll.
+
+        Drives the session runner's clean-up: a bet that stays on the table is
+        evaluated again next roll, while a bet that comes down is removed. The
+        DEFAULT rule keeps a bet up only while it is UNRESOLVED -- NO_ACTION (the
+        roll didn't touch it) or PUSH (a stand-off that returns the stake intact)
+        -- and takes it down on a WIN or a LOSE. Standing wagers that survive
+        their own win (e.g. a Place bet) OVERRIDE this. ``roll`` is unused in the
+        default (the status alone decides) but is part of the hook signature so an
+        override may key on the specific total.
+        """
+        del roll  # The default keys only on the resolution status.
+        return resolution.status in {ResolutionStatus.NO_ACTION, ResolutionStatus.PUSH}
+
+    def advance(self, roll: DiceRoll, resolution: Resolution) -> None:
+        """Apply any per-bet state transition triggered by this roll.
+
+        Called by the session runner AFTER :meth:`resolve`, this is the single
+        sanctioned place a bet may MUTATE itself in response to a roll (keeping
+        :meth:`resolve` strictly pure for the portfolio's repeated EV passes). The
+        DEFAULT is a no-op -- most bets carry no per-roll state -- and travelling
+        bets (e.g. the Come family establishing a come-point) OVERRIDE it. Both
+        ``roll`` and ``resolution`` are unused in the default but are part of the
+        hook signature so an override may key on either.
+        """
+        del roll, resolution  # The default has no per-roll transition.
+
     def to_dict(self) -> BetPayload:
         """Serialize to a UI/MC-friendly shape.
 
