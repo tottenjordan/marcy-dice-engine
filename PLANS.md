@@ -31,7 +31,7 @@ Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Order A → B → C
 | A3 | bets/come.py — DontCome (bar 12) | ✅ Done | `5e115ce` |
 | A4 | portfolio.py — register come/don't-come in house-drag | ✅ Done | `33fb818` |
 | B1 | bets/base.py — lifecycle hooks (remains_on_table, advance) | ✅ Done | `2a922c1` |
-| B2 | strategy.py — Strategy protocol + starter strategies | ⬜ Pending | |
+| B2 | strategy.py — Strategy protocol + starter strategies | ✅ Done | `17e5cc6` |
 | B3 | session.py — Table + run_session single-session runner | ✅ Done | `4f3e8c5` |
 | B4 | montecarlo.py — Monte Carlo simulator + risk of ruin | ⬜ Pending | |
 | B5 | examples/simulate_strategies.py — strategy comparison demo | ⬜ Pending | |
