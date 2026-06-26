@@ -2,7 +2,19 @@
 
 from fractions import Fraction
 
+import pytest
+
 from craps_engine.money import RatioOdds, serialize_fraction
+
+
+def test_ratio_rejects_nonpositive_stake() -> None:
+    with pytest.raises(ValueError, match="stake"):
+        RatioOdds(7, 0)
+
+
+def test_ratio_rejects_negative_win() -> None:
+    with pytest.raises(ValueError, match="win"):
+        RatioOdds(-1, 6)
 
 
 def test_ratio_payout_is_exact() -> None:

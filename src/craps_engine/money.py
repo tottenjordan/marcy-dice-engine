@@ -10,6 +10,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import TypedDict
+
+
+class RatioPayload(TypedDict):
+    """Serialized shape of a :class:`RatioOdds` value.
+
+    ``ratio`` is the canonical ``win:stake`` string; ``float`` is a lossy
+    convenience view for display/analytics only.
+    """
+
+    ratio: str
+    float: float
+
+
+class FractionPayload(TypedDict):
+    """Serialized shape of a single Fraction.
+
+    ``exact`` round-trips the value losslessly; ``float`` and ``display`` are
+    lossy views meant only for analytics convenience and human display.
+    """
+
+    exact: str
+    float: float
+    display: str
 
 
 @dataclass(frozen=True)
@@ -24,6 +48,20 @@ class RatioOdds:
     win: int
     stake: int
 
+    def __post_init__(self) -> None:
+        """Fail fast on invalid odds instead of deferring a ZeroDivisionError.
+
+        A non-positive stake can never form a valid payout ratio, and a
+        negative win is nonsensical. Raise immediately with the bad value so
+        the error surfaces at construction, not at some later ``payout`` call.
+        """
+        if self.stake <= 0:
+            msg = f"stake must be positive, got {self.stake}"
+            raise ValueError(msg)
+        if self.win < 0:
+            msg = f"win must be non-negative, got {self.win}"
+            raise ValueError(msg)
+
     def as_fraction(self) -> Fraction:
         """Return the ratio as an exact ``win/stake`` Fraction."""
         return Fraction(self.win, self.stake)
@@ -36,7 +74,7 @@ class RatioOdds:
         """
         return stake * self.as_fraction()
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> RatioPayload:
         """Serialize to a UI/MC-friendly shape.
 
         ``ratio`` is the canonical ``win:stake`` string; ``float`` is a lossy
@@ -45,7 +83,7 @@ class RatioOdds:
         return {"ratio": f"{self.win}:{self.stake}", "float": float(self.as_fraction())}
 
 
-def serialize_fraction(value: Fraction, *, as_percent: bool = True) -> dict[str, object]:
+def serialize_fraction(value: Fraction, *, as_percent: bool = True) -> FractionPayload:
     """Exact + float + display payload for one Fraction.
 
     The UI shows ``display`` while analytics/Monte-Carlo layers consume the
