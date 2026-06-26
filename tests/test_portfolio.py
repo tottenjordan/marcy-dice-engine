@@ -17,6 +17,7 @@ from fractions import Fraction
 import pytest
 
 from craps_engine.bets.base import Bet, Resolution, ResolutionStatus
+from craps_engine.bets.come import ComeBet, DontCome
 from craps_engine.bets.line import DontPass, PassLine
 from craps_engine.bets.odds import TakeOdds
 from craps_engine.bets.place import PlaceBet
@@ -114,6 +115,42 @@ def test_odds_bet_contributes_zero_drag() -> None:
     # An odds bet has zero house edge, so it adds nothing to the drag.
     analyzer = PortfolioAnalyzer([PassLine("pl", Fraction(10)), TakeOdds("odds", 4, Fraction(20))])
     assert analyzer.house_drag() == Fraction(10) * Fraction(7, 495)
+
+
+def test_come_only_house_drag() -> None:
+    # A single Come bet carries the Pass Line edge (7/495) on its stake.
+    analyzer = PortfolioAnalyzer([ComeBet("c", 10, come_point=6)])
+    assert analyzer.house_drag() == Fraction(10) * Fraction(7, 495)
+
+
+def test_dont_come_only_house_drag() -> None:
+    # A single Don't Come bet carries the Don't Pass edge (3/220) on its stake.
+    analyzer = PortfolioAnalyzer([DontCome("d", 10, come_point=8)])
+    assert analyzer.house_drag() == Fraction(10) * Fraction(3, 220)
+
+
+def test_come_and_dont_come_house_drag() -> None:
+    # Drag sums each bet's stake * per-resolution edge, exact Fractions only.
+    analyzer = PortfolioAnalyzer([ComeBet("c", 10, come_point=6), DontCome("d", 10, come_point=8)])
+    assert analyzer.house_drag() == Fraction(10) * Fraction(7, 495) + Fraction(10) * Fraction(
+        3, 220
+    )
+
+
+def test_traveling_come_matrix_is_pure_across_calls() -> None:
+    # A TRAVELING come bet (come_point=None) must not have its come_point
+    # established by resolve: calling net_payout_matrix twice against the same
+    # analyzer/state must yield identical matrices, proving resolve did not
+    # mutate the bet's come_point between calls.
+    bet = ComeBet("c", 10)
+    analyzer = PortfolioAnalyzer([bet])
+    state = GameState()
+    state.apply(4)
+    first = analyzer.net_payout_matrix(state)
+    second = analyzer.net_payout_matrix(state)
+    assert first == second
+    # The traveling come bet stays traveling: resolve never sets the come-point.
+    assert bet.come_point is None
 
 
 def test_house_drag_unknown_type_raises() -> None:

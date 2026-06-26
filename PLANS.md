@@ -29,7 +29,7 @@ Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Order A → B → C
 | A1 | bets/come.py — ComeBet traveling-state resolution | ✅ Done | `4bc171c` |
 | A2 | ComeBet established play + establish_come_point mutator | ✅ Done | `02a2aa7` |
 | A3 | bets/come.py — DontCome (bar 12) | ✅ Done | `5e115ce` |
-| A4 | portfolio.py — register come/don't-come in house-drag | ⬜ Pending | |
+| A4 | portfolio.py — register come/don't-come in house-drag | ✅ Done | |
 | B1 | bets/base.py — lifecycle hooks (remains_on_table, advance) | ⬜ Pending | |
 | B2 | strategy.py — Strategy protocol + starter strategies | ⬜ Pending | |
 | B3 | session.py — Table + run_session single-session runner | ⬜ Pending | |

@@ -39,6 +39,7 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import TYPE_CHECKING, TypedDict
 
+from craps_engine.bets.come import ComeBet, DontCome
 from craps_engine.bets.line import DontPass, PassLine
 from craps_engine.bets.odds import LayOdds, TakeOdds
 from craps_engine.bets.place import PlaceBet
@@ -164,6 +165,9 @@ class PortfolioAnalyzer:
         """Per-resolution house edge for ``bet``, dispatched by concrete type.
 
         * :class:`PassLine` -> 7/495, :class:`DontPass` -> 3/220 (from REGISTRY).
+        * :class:`ComeBet` -> 7/495 (Pass edge), :class:`DontCome` -> 3/220
+          (Don't Pass edge): a come-family bet is mechanically a travelling line
+          bet, so it carries the same per-resolution edge as its line mirror.
         * :class:`PlaceBet` -> ``place_spec(bet.number).house_edge``.
         * :class:`TakeOdds` / :class:`LayOdds` -> Fraction(0) (free odds carry no
           edge).
@@ -175,6 +179,12 @@ class PortfolioAnalyzer:
         if isinstance(bet, PassLine):
             return REGISTRY["pass_line"].house_edge
         if isinstance(bet, DontPass):
+            return REGISTRY["dont_pass"].house_edge
+        if isinstance(bet, ComeBet):
+            # A come bet mirrors the Pass Line, so it carries the Pass edge.
+            return REGISTRY["pass_line"].house_edge
+        if isinstance(bet, DontCome):
+            # A don't-come bet mirrors Don't Pass, so it carries that edge.
             return REGISTRY["dont_pass"].house_edge
         if isinstance(bet, PlaceBet):
             return place_spec(bet.number).house_edge
