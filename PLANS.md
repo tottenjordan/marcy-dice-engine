@@ -12,7 +12,7 @@ Goal: build an exact-math craps betting-strategy engine, one reviewable task at 
 | 6 | state.py — GameState machine | ✅ Done | `8eaf78c` |
 | 7 | bets/base.py — Bet ABC + Resolution | ✅ Done | `53f02f8` |
 | 8 | bets/line.py — Pass Line & Don't Pass | ✅ Done | `85fb4d3` |
-| 9 | bets/odds.py — Free Odds (take/lay) | ⬜ Pending | |
+| 9 | bets/odds.py — Free Odds (take/lay) | ✅ Done | `7e2654f` |
 | 10 | bets/place.py — Place 4/5/6/8/9/10 | ⬜ Pending | |
 | 11 | portfolio.py — PortfolioAnalyzer (dual-lens) | ⬜ Pending | |
 | 12 | examples/ — hedged demo + integration test | ⬜ Pending | |
