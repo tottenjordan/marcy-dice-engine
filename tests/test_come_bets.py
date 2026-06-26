@@ -13,7 +13,7 @@ from fractions import Fraction
 import pytest
 
 from craps_engine.bets.base import ResolutionStatus
-from craps_engine.bets.come import ComeBet
+from craps_engine.bets.come import ComeBet, DontCome
 from craps_engine.dice import DiceRoll
 from craps_engine.state import GameState
 
@@ -197,3 +197,135 @@ def test_to_dict_established_round_trips_come_point() -> None:
     d = ComeBet("c", Fraction(10), come_point=6).to_dict()
     assert d["come_point"] == 6
     assert d["type"] == "ComeBet"
+
+
+# ===========================================================================
+# DontCome: the wrong-way come bet, riding its OWN come-point (bar 12). It
+# mirrors Don't Pass but keyed on self.come_point, and -- like ComeBet --
+# IGNORES the table phase entirely.
+# ===========================================================================
+# ---------------------------------------------------------------------------
+# Coming state (come_point is None): behaves like a Don't Pass come-out.
+# ---------------------------------------------------------------------------
+def test_dont_come_coming_wins_on_each_craps_number() -> None:
+    s = GameState()
+    s.apply(4)  # table on a point; don't-come bet is "coming"
+    for d in (DiceRoll(1, 1), DiceRoll(1, 2)):  # 2, 3
+        r = DontCome("dc", Fraction(10)).resolve(d, s)
+        assert r.status is ResolutionStatus.WIN
+        assert r.delta == Fraction(10)
+
+
+def test_dont_come_coming_loses_on_each_natural() -> None:
+    s = GameState()
+    s.apply(4)
+    for d in (DiceRoll(3, 4), DiceRoll(5, 6)):  # 7, 11
+        r = DontCome("dc", Fraction(10)).resolve(d, s)
+        assert r.status is ResolutionStatus.LOSE
+        assert r.delta == Fraction(-10)
+
+
+def test_dont_come_coming_pushes_on_bar_twelve() -> None:
+    s = GameState()
+    s.apply(4)
+    r = DontCome("dc", Fraction(10)).resolve(DiceRoll(6, 6), s)  # 12
+    assert r.status is ResolutionStatus.PUSH
+    assert r.delta == Fraction(0)
+    assert r.note == "bar 12 push"
+
+
+def test_dont_come_coming_point_number_is_no_action() -> None:
+    s = GameState()
+    s.apply(4)
+    r = DontCome("dc", Fraction(10)).resolve(DiceRoll(3, 3), s)  # 6 -> would establish
+    assert r.status is ResolutionStatus.NO_ACTION
+    assert r.delta == Fraction(0)
+    assert r.note == "come point established"
+
+
+# ---------------------------------------------------------------------------
+# Established state (come_point set): the seven WINS, the come-point LOSES.
+# ---------------------------------------------------------------------------
+def test_dont_come_established_wins_on_seven_out() -> None:
+    bet = DontCome("dc", Fraction(10), come_point=6)
+    r = bet.resolve(DiceRoll(3, 4), GameState())  # 7
+    assert r.status is ResolutionStatus.WIN
+    assert r.delta == Fraction(10)
+
+
+def test_dont_come_established_loses_when_point_made() -> None:
+    bet = DontCome("dc", Fraction(10), come_point=6)
+    r = bet.resolve(DiceRoll(3, 3), GameState())  # 6
+    assert r.status is ResolutionStatus.LOSE
+    assert r.delta == Fraction(-10)
+
+
+def test_dont_come_established_middle_total_is_no_action() -> None:
+    bet = DontCome("dc", Fraction(10), come_point=6)
+    r = bet.resolve(DiceRoll(2, 3), GameState())  # 5: neither the point nor a 7
+    assert r.status is ResolutionStatus.NO_ACTION
+    assert r.delta == Fraction(0)
+
+
+# ---------------------------------------------------------------------------
+# Phase-independence and purity.
+# ---------------------------------------------------------------------------
+def test_dont_come_resolves_identically_regardless_of_phase() -> None:
+    come_out = GameState()  # COME_OUT, no point
+    on_point = _state_point(8)  # POINT, point 8
+    for total_dice in (DiceRoll(5, 6), DiceRoll(1, 1), DiceRoll(3, 3)):
+        a = DontCome("dc", Fraction(10)).resolve(total_dice, come_out)
+        b = DontCome("dc", Fraction(10)).resolve(total_dice, on_point)
+        assert a.status is b.status
+        assert a.delta == b.delta
+
+
+def test_dont_come_resolve_is_pure_does_not_establish_come_point() -> None:
+    bet = DontCome("dc", Fraction(10))
+    bet.resolve(DiceRoll(3, 3), GameState())  # 6 would establish a come-point
+    assert bet.come_point is None  # resolve is PURE: no mutation
+
+
+# ---------------------------------------------------------------------------
+# establish_come_point mutator works on DontCome too.
+# ---------------------------------------------------------------------------
+def test_dont_come_establish_come_point_sets_and_returns_true() -> None:
+    bet = DontCome("dc", Fraction(10))
+    assert bet.establish_come_point(6) is True
+    assert bet.come_point == 6
+
+
+def test_dont_come_establish_come_point_is_one_shot() -> None:
+    bet = DontCome("dc", Fraction(10))
+    bet.establish_come_point(6)
+    assert bet.establish_come_point(8) is False
+    assert bet.come_point == 6
+
+
+def test_dont_come_establish_come_point_rejects_seven() -> None:
+    bet = DontCome("dc", Fraction(10))
+    assert bet.establish_come_point(7) is False
+    assert bet.come_point is None
+
+
+# ---------------------------------------------------------------------------
+# Construction validation and serialization.
+# ---------------------------------------------------------------------------
+def test_dont_come_rejects_invalid_come_point() -> None:
+    with pytest.raises(ValueError, match="7"):
+        DontCome("dc", 10, come_point=7)
+
+
+def test_dont_come_to_dict_traveling_has_none_come_point() -> None:
+    d = DontCome("dc", Fraction(10)).to_dict()
+    assert d["come_point"] is None
+    assert d["type"] == "DontCome"
+    assert d["id"] == "dc"
+    assert d["working"] is True
+    assert "amount" in d
+
+
+def test_dont_come_to_dict_established_round_trips_come_point() -> None:
+    d = DontCome("dc", Fraction(10), come_point=6).to_dict()
+    assert d["come_point"] == 6
+    assert d["type"] == "DontCome"
