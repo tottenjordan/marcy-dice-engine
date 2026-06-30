@@ -33,7 +33,7 @@ Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Order A → B → C
 | B1 | bets/base.py — lifecycle hooks (remains_on_table, advance) | ✅ Done | `2a922c1` |
 | B2 | strategy.py — Strategy protocol + starter strategies | ✅ Done | `17e5cc6` |
 | B3 | session.py — Table + run_session single-session runner | ✅ Done | `4f3e8c5` |
-| B4 | montecarlo.py — Monte Carlo simulator + risk of ruin | ⬜ Pending | |
+| B4 | montecarlo.py — Monte Carlo simulator + risk of ruin | ✅ Done | `57e0d90` |
 | B5 | examples/simulate_strategies.py — strategy comparison demo | ⬜ Pending | |
 | C1 | pyproject.toml — textual ui group, entry point, coverage | ⬜ Pending | |
 | C2 | craps_tui/golden.py — golden-verify math self-check | ⬜ Pending | |
