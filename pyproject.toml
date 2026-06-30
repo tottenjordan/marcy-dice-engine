@@ -9,6 +9,9 @@ authors = [
 requires-python = ">=3.11"
 dependencies = []
 
+[project.scripts]
+craps-tui = "craps_tui.__main__:main"
+
 [build-system]
 requires = ["uv_build>=0.9.14,<0.10.0"]
 build-backend = "uv_build"
@@ -22,6 +25,9 @@ test = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
 ]
+ui = [
+    "textual>=8.2.8",
+]
 
 [tool.ruff]
 line-length = 100
@@ -34,9 +40,10 @@ ignore = ["D", "COM812", "ISC001"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004"]
 "examples/**" = ["T201", "INP001"]
+"src/craps_tui/**" = ["INP001"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=craps_engine --cov-report=term-missing --cov-fail-under=90"
+addopts = "--cov=craps_engine --cov=craps_tui --cov-report=term-missing --cov-fail-under=90"
 testpaths = ["tests"]
 
 [tool.ty.environment]
