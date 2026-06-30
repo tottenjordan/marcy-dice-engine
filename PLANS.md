@@ -37,7 +37,7 @@ Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Order A → B → C
 | B5 | examples/simulate_strategies.py — strategy comparison demo | ✅ Done | `acd299b` |
 | C1 | pyproject.toml — textual ui group, entry point, coverage | ✅ Done | `a70199a` |
 | C2 | craps_tui/golden.py — golden-verify math self-check | ✅ Done | `8a0f50b` |
-| C3 | craps_tui/viewmodel.py — pure view-model/formatters | ⬜ Pending | |
+| C3 | craps_tui/viewmodel.py — pure view-model/formatters | ✅ Done | `94b23f5` |
 | C4 | craps_tui/app.py — Textual calculator app + verify screen | ⬜ Pending | |
 | C5 | docs sync — CLAUDE.md + README.md for the TUI | ⬜ Pending | |
 
