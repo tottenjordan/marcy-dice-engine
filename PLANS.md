@@ -97,7 +97,7 @@ renders. Supersedes the abandoned Phase-5 P7 docs branch. Order Q1 → Q5 (linea
 | Q1 | engine — expose optimal place-bet unit (`place_unit`) | ✅ Done | `70ec326` |
 | Q2 | board — `place_units` + `net_pct` pure context | ✅ Done | `1fdb015` |
 | Q3 | felt — unit tooltips + tip, point ring/puck, net % render | ✅ Done | `fafdc66` |
-| Q4 | layout — wide-screen no-scroll dashboard | ⬜ Pending | |
+| Q4 | layout — wide-screen no-scroll dashboard | ✅ Done | `9da746a` |
 | Q5 | docs — README/CLAUDE + regenerated screenshots (redo P7) | ⬜ Pending | |
 
 ## Phase 3 backlog
