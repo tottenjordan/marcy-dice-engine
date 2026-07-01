@@ -35,6 +35,12 @@ def _money(amount: int) -> object:
     return serialize_fraction(Fraction(amount), as_percent=False)
 
 
+def _amount_dollars(payload: dict) -> int:
+    """Whole-dollar magnitude of a serialized money payload (via its exact ``num/den``)."""
+    num, _, denom = payload["exact"].partition("/")
+    return int(Fraction(int(num), int(denom)))
+
+
 def _start_game(client: TestClient, **form: object) -> tuple[str, str]:
     """POST the new-game form; return ``(session_id, board_html)``."""
     resp = client.post("/game", data=form)
@@ -594,10 +600,23 @@ def test_press_just_won_bet_increases_displayed_amount() -> None:
             break
     assert bet_id, "place bet never won within cap"
 
+    # A Press control must be rendered for the just-won bet before we press it.
+    pre = client.get(f"/api/game/{sid}").json()
+    assert any(b["id"] == bet_id for b in pre["active_bets"])
+    won_board = html
+    assert f'"bet_id": "{bet_id}"' in won_board
+    assert "Press" in won_board
+
     pressed = client.post(f"/game/{sid}/press", data={"bet_id": bet_id})
     assert pressed.status_code == 200
-    # A pressed place-N chip is strictly larger than the original $12 stake.
-    assert "$12" not in pressed.text or "pressed" in pressed.text.lower()
+    # The pressed bet's displayed stake is strictly larger than the original $12.
+    # Read the authoritative amount back from the JSON snapshot for this same bet.
+    snap = client.get(f"/api/game/{sid}").json()
+    pressed_row = next(b for b in snap["active_bets"] if b["id"] == bet_id)
+    pressed_amount = _amount_dollars(pressed_row["amount"])
+    assert pressed_amount > 12, f"press did not grow the $12 stake: {pressed_amount}"
+    # The grown stake is reflected on the rendered board.
+    assert f"${pressed_amount}" in pressed.text
 
 
 def test_start_game_form_is_uncapped_and_survives_many_rolls() -> None:
@@ -608,8 +627,12 @@ def test_start_game_form_is_uncapped_and_survives_many_rolls() -> None:
     for _ in range(150):
         html = client.post(f"/game/{sid}/roll").text
     assert "Game over" not in html
-    # Uncapped: the rolls-left figure renders as None (final display is P6's job).
+    # The rolls-used stat is still shown...
     assert "Rolls used" in html
+    # ...but an uncapped game shows NO misleading "left" counter and never leaks
+    # the raw ``None`` rolls-left figure.
+    assert "left)" not in html
+    assert "None" not in html
 
 
 def test_game_over_banner_and_gated_controls() -> None:
@@ -630,6 +653,84 @@ def test_game_over_banner_and_gated_controls() -> None:
     assert f"/game/{sid}/roll" not in html
     # Zone buttons must be disabled once the game is over.
     assert "disabled" in html
+
+
+# --- P6 felt-tracker + press/remove control render tests --------------------
+
+
+def test_active_bet_renders_remove_control() -> None:
+    """An active bet's row carries a Remove control that POSTs to /remove with its id."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    placed = client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
+    bet_id = client.get(f"/api/game/{sid}").json()["active_bets"][0]["id"]
+    html = placed.text
+    assert f"/game/{sid}/remove" in html
+    assert f'"bet_id": "{bet_id}"' in html
+    assert "Remove" in html
+
+
+def test_last_roll_net_indicator_shows_after_roll() -> None:
+    """After a roll, the per-roll net indicator shows a signed dollar swing."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
+    html = client.post(f"/game/{sid}/roll").text
+    # The dedicated net element is present, carrying a signed dollar figure.
+    assert 'class="roll-net' in html
+    assert re.search(r"[+\-]\$\d", html) is not None
+
+
+def test_recent_rolls_strip_shows_dice_faces() -> None:
+    """After several rolls, the recent-rolls strip renders dice-face glyphs."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
+    html = ""
+    for _ in range(4):
+        html = client.post(f"/game/{sid}/roll").text
+    assert 'class="roll-strip"' in html
+    assert any(face in html for face in "⚀⚁⚂⚃⚄⚅")
+
+
+def test_total_at_risk_badge_present() -> None:
+    """The board shows a total-at-risk figure ($0 with none, the stake once bet)."""
+    client = _client()
+    sid, start_html = _start_game(client, seed=1, starting_bankroll=300)
+    assert "at risk" in start_html.lower()
+    assert "$0" in start_html
+    placed = client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
+    assert "at risk" in placed.text.lower()
+    assert "$10" in placed.text
+
+
+def test_playable_zone_carries_pays_tooltip() -> None:
+    """Playable zones fold their payout ratio into a title tooltip + aria-label."""
+    client = _client()
+    _sid, html = _start_game(client, seed=1, starting_bankroll=300)
+    # Place 6 pays 7:6; Pass Line pays 1:1 — both come-out-visible zones.
+    assert 'title="Pays 7:6"' in html
+    assert 'title="Pays 1:1"' in html
+    assert "pays 7:6" in html.lower()  # folded into the place-6 aria-label too
+
+
+def test_press_control_rendered_only_for_winning_bet() -> None:
+    """A Press control appears once a place bet wins, POSTing to /press with its id."""
+    client = _client()
+    sid, _ = _start_game(client, seed=5, starting_bankroll=1000)
+    point = _establish_point_html(client, sid)
+    client.post(f"/game/{sid}/bet", data={"spec": f"place {point}", "amount": 12})
+    html = ""
+    bet_id = ""
+    for _ in range(40):
+        html = client.post(f"/game/{sid}/roll").text
+        if re.search(r"place\d+: win", html):
+            bet_id = _place_win_id(html)
+            break
+    assert bet_id, "place bet never won within cap"
+    assert f"/game/{sid}/press" in html
+    assert "Press" in html
+    assert f'"bet_id": "{bet_id}"' in html
 
 
 # --- felt (visual craps table) tests ----------------------------------------

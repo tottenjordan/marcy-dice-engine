@@ -36,7 +36,13 @@
     </div>
     <div class="stat">
       <span class="label">Rolls used</span>
-      <span class="value">{{ rolls_used }} ({{ rolls_left }} left)</span>
+      {# Only capped games have a meaningful "left" figure; uncapped play shows
+         just the count so no misleading "None left" counter leaks. #}
+      <span class="value">{{ rolls_used }}{% if capped %} ({{ rolls_left }} left){% endif %}</span>
+    </div>
+    <div class="stat">
+      <span class="label">At risk</span>
+      <span class="value" id="at-risk">{{ total_at_risk }}</span>
     </div>
   </div>
 
@@ -45,10 +51,35 @@
     <span class="die">{{ die1_face }}</span>
     <span class="die">{{ die2_face }}</span>
     <span class="total">= {{ total }}</span>
+    {#
+      Per-roll net swing (#7): the already-signed/formatted last_roll_net, tinted
+      green for a win (leading "+") and red for a loss. Guarded on non-empty so it
+      only shows once a roll has resolved.
+    #}
+    {% if last_roll_net %}
+    <span class="roll-net {{ 'roll-net-win' if last_roll_net.startswith('+') else 'roll-net-lose' if last_roll_net.startswith('-') else '' }}"
+          id="roll-net">{{ last_roll_net }}</span>
+    {% endif %}
     {% else %}
     <span class="muted">No roll yet — place a bet and roll.</span>
     {% endif %}
   </div>
+
+  {#
+    Last-10 roll history strip (#5): compact dice chips, newest-first (the engine
+    already ordered + capped recent_rolls). Renders nothing before the first roll.
+  #}
+  {% if recent_rolls %}
+  <div class="roll-strip" id="roll-strip" aria-label="Recent rolls (newest first)">
+    {% for r in recent_rolls %}
+    <span class="roll-chip">
+      <span class="roll-chip-die">{{ r.die1_face }}</span>
+      <span class="roll-chip-die">{{ r.die2_face }}</span>
+      <span class="roll-chip-total">{{ r.total }}</span>
+    </span>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   {% if flash %}
   <div class="flash" id="flash">{{ flash }}</div>
@@ -66,12 +97,22 @@
     {% if chip_zones.get(key) %}<span class="{{ cls }}">{{ chip_zones[key] }}</span>{% endif %}
   {% endmacro %}
 
+  {#
+    Payout-ratio tooltip attributes for a playable zone button. When zone_odds
+    has a ratio for `key` (fixed craps math from board.py), fold it into both the
+    aria-label and a hover `title`; otherwise emit just the plain aria-label. Keys
+    with no ratio (Come/Don't Come) simply get the bare label — no tooltip.
+  #}
+  {% macro pays(key, label) %}
+    {%- if zone_odds.get(key) -%}aria-label="{{ label }} — pays {{ zone_odds[key] }}" title="Pays {{ zone_odds[key] }}"{%- else -%}aria-label="{{ label }}"{%- endif -%}
+  {% endmacro %}
+
   <div class="felt" aria-label="Craps table">
     {# --- Place / box numbers row (playable) --- #}
     <div class="felt-boxes">
       {% for n in [4, 5, 6, 8, 9, 10] %}
       <button class="zone zone-place" type="button"
-              aria-label="Place {{ n }}"
+              {{ pays('place-' ~ n, 'Place ' ~ n) }}
               hx-post="/game/{{ session_id }}/bet"
               hx-vals='{"spec": "place {{ n }}"}'
               hx-include="#stake"
@@ -118,7 +159,7 @@
     {# --- Don't Pass Bar + Lay Odds (playable; odds gated) --- #}
     <div class="felt-line felt-line-dont">
       <button class="zone zone-dontpass" type="button"
-              aria-label="Don't Pass Bar"
+              {{ pays('dontpass', "Don't Pass Bar") }}
               hx-post="/game/{{ session_id }}/bet"
               hx-vals='{"spec": "dontpass"}'
               hx-include="#stake"
@@ -138,7 +179,7 @@
       #}
       {% if odds_available %}
       <button class="zone zone-lay" type="button"
-              aria-label="Lay Odds on {{ point }}"
+              {{ pays('lay-' ~ point, 'Lay Odds on ' ~ point) }}
               hx-post="/game/{{ session_id }}/bet"
               hx-vals='{"spec": "lay {{ point }}"}'
               hx-include="#stake"
@@ -153,7 +194,7 @@
     {# --- Pass Line + Take Odds (playable; odds gated) --- #}
     <div class="felt-line felt-line-pass">
       <button class="zone zone-pass" type="button"
-              aria-label="Pass Line"
+              {{ pays('pass', 'Pass Line') }}
               hx-post="/game/{{ session_id }}/bet"
               hx-vals='{"spec": "pass"}'
               hx-include="#stake"
@@ -165,7 +206,7 @@
       {# Take-odds slot: same puck-point keying + limitation as the lay slot above. #}
       {% if odds_available %}
       <button class="zone zone-odds" type="button"
-              aria-label="Take Odds on {{ point }}"
+              {{ pays('odds-' ~ point, 'Take Odds on ' ~ point) }}
               hx-post="/game/{{ session_id }}/bet"
               hx-vals='{"spec": "take {{ point }}"}'
               hx-include="#stake"
@@ -205,9 +246,30 @@
     {% if active_bets %}
     <ul>
       {% for bet in active_bets %}
+      {#
+        Each bet row gets inline HTMX controls (#2/#6): a Press button only right
+        after the bet wins (bet.can_press), and a Remove button while the game is
+        live (bet.can_remove). Both swap the whole board like every other action.
+      #}
       <li>
-        {{ bet.type }}{% if bet.number is not none %} {{ bet.number }}{% elif bet.come_point is not none %} {{ bet.come_point }}{% endif %}
-        {{ bet.amount }}{% if not bet.working %} (off){% endif %}
+        <span class="bet-label">{{ bet.type }}{% if bet.number is not none %} {{ bet.number }}{% elif bet.come_point is not none %} {{ bet.come_point }}{% endif %}
+        {{ bet.amount }}{% if not bet.working %} (off){% endif %}</span>
+        <span class="bet-controls">
+          {% if bet.can_press %}
+          <button type="button" class="bet-btn bet-press"
+                  aria-label="Press bet"
+                  hx-post="/game/{{ session_id }}/press"
+                  hx-vals='{"bet_id": "{{ bet.id }}"}'
+                  hx-target="#board" hx-swap="outerHTML">Press</button>
+          {% endif %}
+          {% if bet.can_remove %}
+          <button type="button" class="bet-btn bet-remove"
+                  aria-label="Remove bet"
+                  hx-post="/game/{{ session_id }}/remove"
+                  hx-vals='{"bet_id": "{{ bet.id }}"}'
+                  hx-target="#board" hx-swap="outerHTML">✕ Remove</button>
+          {% endif %}
+        </span>
       </li>
       {% endfor %}
     </ul>

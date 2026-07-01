@@ -270,6 +270,66 @@ button.zone:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .stake-field { font-weight: 700; }
 
+/* --- P6 trackers + inline bet controls ---------------------------------- */
+
+/* Per-roll net indicator (#7): sits beside the dice, tinted win/lose. */
+.roll-net {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.roll-net-win { color: var(--win); }
+.roll-net-lose { color: var(--lose); }
+
+/* Last-10 roll history strip (#5): small dice chips in a row, wraps/scrolls. */
+.roll-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  overflow-x: auto;
+}
+
+.roll-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.roll-chip-die { font-size: 1.15rem; line-height: 1; }
+.roll-chip-total { color: var(--muted); font-size: 0.8rem; font-weight: 700; }
+
+/* "Your bets" rows now carry inline Press/Remove controls. */
+.bets ul { list-style: none; margin: 0; padding: 0; }
+
+.bets li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.bet-controls { display: inline-flex; gap: 0.35rem; flex-shrink: 0; }
+
+.bet-btn {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.8rem;
+  border-radius: 5px;
+}
+
+.bet-press { background: var(--win); }
+.bet-remove { background: var(--lose); }
+
 /* Narrow screens: collapse the felt to a single column. */
 @media (max-width: 560px) {
   .felt {
