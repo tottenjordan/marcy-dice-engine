@@ -5,6 +5,14 @@
   #board, which the first "start game" swaps out for this partial. Session
   identity travels in the HTMX action URLs below (/game/{{ session_id }}/...),
   so no cookie is needed.
+
+  Phase 4: the board is now a green-felt craps table whose zones are CLICKABLE
+  tiles. Each playable zone is a <button> that HTMX-POSTs the SAME two form
+  fields the plain buttons used to (spec + amount) to /game/{id}/bet, pulling the
+  shared stake via hx-include="#stake". Occupied zones carry a chip badge built
+  from chip_zones (keys from craps_api.board). Classic-table areas the engine
+  does NOT support (Field, Hardways, Big 6/8, props) are drawn as dimmed,
+  aria-disabled decoration with NO hx-post — authenticity only.
 #}
 <div id="board" class="board">
   {% if game_over %}
@@ -48,6 +56,142 @@
 
   <div class="hint" id="hint">{{ hint }}</div>
 
+  {#
+    The green felt. A CSS grid of named areas. Playable zones are <button
+    class="zone ...">; unsupported zones are dimmed decoration (aria-disabled, no
+    hx-post). The chip macro below renders an occupied zone's aggregated dollar
+    label from chip_zones using the exact keys from craps_api.board.
+  #}
+  {% macro chip(key, cls="chip") %}
+    {% if chip_zones.get(key) %}<span class="{{ cls }}">{{ chip_zones[key] }}</span>{% endif %}
+  {% endmacro %}
+
+  <div class="felt" aria-label="Craps table">
+    {# --- Place / box numbers row (playable) --- #}
+    <div class="felt-boxes">
+      {% for n in [4, 5, 6, 8, 9, 10] %}
+      <button class="zone zone-place" type="button"
+              aria-label="Place {{ n }}"
+              hx-post="/game/{{ session_id }}/bet"
+              hx-vals='{"spec": "place {{ n }}"}'
+              hx-include="#stake"
+              hx-target="#board" hx-swap="outerHTML"
+              {% if game_over %}disabled{% endif %}>
+        <span class="zone-num">{{ n }}</span>
+        {{ chip("place-" ~ n) }}
+        {{ chip("come-" ~ n, "chip-come") }}
+        {{ chip("dontcome-" ~ n, "chip-come") }}
+      </button>
+      {% endfor %}
+    </div>
+
+    {# --- Come (large playable area) --- #}
+    <button class="zone zone-come" type="button"
+            aria-label="Come"
+            hx-post="/game/{{ session_id }}/bet"
+            hx-vals='{"spec": "come"}'
+            hx-include="#stake"
+            hx-target="#board" hx-swap="outerHTML"
+            {% if game_over %}disabled{% endif %}>
+      COME
+      {{ chip("come") }}
+    </button>
+
+    {# --- Don't Come (strip playable) --- #}
+    <button class="zone zone-dontcome" type="button"
+            aria-label="Don't Come"
+            hx-post="/game/{{ session_id }}/bet"
+            hx-vals='{"spec": "dontcome"}'
+            hx-include="#stake"
+            hx-target="#board" hx-swap="outerHTML"
+            {% if game_over %}disabled{% endif %}>
+      Don't Come
+      {{ chip("dontcome") }}
+    </button>
+
+    {# --- Field (dimmed decoration — NOT playable) --- #}
+    <div class="zone zone-dim zone-field" aria-disabled="true">
+      <span class="zone-tag">Field</span>
+      <span class="zone-sub">2 3 4 9 10 11 12</span>
+    </div>
+
+    {# --- Don't Pass Bar + Lay Odds (playable; odds gated) --- #}
+    <div class="felt-line felt-line-dont">
+      <button class="zone zone-dontpass" type="button"
+              aria-label="Don't Pass Bar"
+              hx-post="/game/{{ session_id }}/bet"
+              hx-vals='{"spec": "dontpass"}'
+              hx-include="#stake"
+              hx-target="#board" hx-swap="outerHTML"
+              {% if game_over %}disabled{% endif %}>
+        Don't Pass Bar
+        {{ chip("dontpass") }}
+      </button>
+      {#
+        Odds slot: rendered only when a point is on, keyed on the PUCK point.
+        The lay-N / odds-N chip zones (below and behind Pass) use this same puck
+        `point`, so button-driven odds always match the rendered zone. KNOWN
+        LIMITATION: odds placed via free-text on a come-point that differs from
+        the puck point produce a `lay-{n}`/`odds-{n}` chip key with no matching
+        rendered slot, so that chip is silently not shown — come-odds on the
+        visual felt is out of scope.
+      #}
+      {% if odds_available %}
+      <button class="zone zone-lay" type="button"
+              aria-label="Lay Odds on {{ point }}"
+              hx-post="/game/{{ session_id }}/bet"
+              hx-vals='{"spec": "lay {{ point }}"}'
+              hx-include="#stake"
+              hx-target="#board" hx-swap="outerHTML"
+              {% if game_over %}disabled{% endif %}>
+        Lay Odds ({{ point }})
+        {{ chip("lay-" ~ point) }}
+      </button>
+      {% endif %}
+    </div>
+
+    {# --- Pass Line + Take Odds (playable; odds gated) --- #}
+    <div class="felt-line felt-line-pass">
+      <button class="zone zone-pass" type="button"
+              aria-label="Pass Line"
+              hx-post="/game/{{ session_id }}/bet"
+              hx-vals='{"spec": "pass"}'
+              hx-include="#stake"
+              hx-target="#board" hx-swap="outerHTML"
+              {% if game_over %}disabled{% endif %}>
+        Pass Line
+        {{ chip("pass") }}
+      </button>
+      {# Take-odds slot: same puck-point keying + limitation as the lay slot above. #}
+      {% if odds_available %}
+      <button class="zone zone-odds" type="button"
+              aria-label="Take Odds on {{ point }}"
+              hx-post="/game/{{ session_id }}/bet"
+              hx-vals='{"spec": "take {{ point }}"}'
+              hx-include="#stake"
+              hx-target="#board" hx-swap="outerHTML"
+              {% if game_over %}disabled{% endif %}>
+        Take Odds ({{ point }})
+        {{ chip("odds-" ~ point) }}
+      </button>
+      {% endif %}
+    </div>
+
+    {# --- Center props (dimmed decoration — NOT playable) --- #}
+    <div class="felt-center">
+      <div class="zone zone-dim zone-hardways" aria-disabled="true">
+        <span class="zone-tag">Hardways</span>
+        <span class="zone-sub">4 · 6 · 8 · 10</span>
+      </div>
+      <div class="zone zone-dim zone-big" aria-disabled="true">
+        <span class="zone-tag">Big 6 / Big 8</span>
+      </div>
+      <div class="zone zone-dim zone-props" aria-disabled="true">
+        <span class="zone-sub">props — not yet playable</span>
+      </div>
+    </div>
+  </div>
+
   {% if last_outcomes %}
   <ul class="outcomes">
     {% for res in last_outcomes %}
@@ -57,11 +201,14 @@
   {% endif %}
 
   <div class="bets">
-    <h3>Active bets</h3>
+    <h3>Your bets</h3>
     {% if active_bets %}
     <ul>
       {% for bet in active_bets %}
-      <li>{{ bet.type }} {{ bet.amount }}{% if not bet.working %} (off){% endif %}</li>
+      <li>
+        {{ bet.type }}{% if bet.number is not none %} {{ bet.number }}{% elif bet.come_point is not none %} {{ bet.come_point }}{% endif %}
+        {{ bet.amount }}{% if not bet.working %} (off){% endif %}
+      </li>
       {% endfor %}
     </ul>
     {% else %}
@@ -70,35 +217,27 @@
   </div>
 
   {% if not game_over %}
-  <form class="controls"
-        hx-post="/game/{{ session_id }}/bet"
-        hx-target="#board"
-        hx-swap="outerHTML">
-    <label>Stake <input type="number" name="amount" value="10" min="1"></label>
-    <div class="buttons">
-      <button type="submit" name="spec" value="pass">Pass</button>
-      <button type="submit" name="spec" value="dontpass">Don't Pass</button>
-      <button type="submit" name="spec" value="place 6">Place 6</button>
-      <button type="submit" name="spec" value="place 8">Place 8</button>
-      {% if odds_available %}
-      <button type="submit" name="spec" value="take {{ point }}">Take Odds</button>
-      {% endif %}
-    </div>
-  </form>
+  <div class="controls">
+    <label class="stake-field">Stake
+      <input type="number" id="stake" name="amount" value="10" min="1">
+    </label>
 
-  <form class="freetext"
-        hx-post="/game/{{ session_id }}/bet"
-        hx-target="#board"
-        hx-swap="outerHTML">
-    <label>Free-text bet <input type="text" name="text" placeholder="place 6:6"></label>
-    <button type="submit">Place</button>
-  </form>
+    <form class="freetext"
+          hx-post="/game/{{ session_id }}/bet"
+          hx-target="#board"
+          hx-swap="outerHTML">
+      <label>Advanced free-text bet
+        <input type="text" name="text" placeholder="come:5, lay 4:8">
+      </label>
+      <button type="submit">Place</button>
+    </form>
 
-  <form class="roll"
-        hx-post="/game/{{ session_id }}/roll"
-        hx-target="#board"
-        hx-swap="outerHTML">
-    <button type="submit" class="roll-btn">Roll the dice</button>
-  </form>
+    <form class="roll"
+          hx-post="/game/{{ session_id }}/roll"
+          hx-target="#board"
+          hx-swap="outerHTML">
+      <button type="submit" class="roll-btn">Roll the dice</button>
+    </form>
+  </div>
   {% endif %}
 </div>

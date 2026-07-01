@@ -8,6 +8,13 @@
   --lose: #b91c1c;
   --card: #ffffff;
   --line: #d1d5db;
+  /* Green-felt craps table palette (Phase 4 visual board). */
+  --felt: #0b6b3a;
+  --felt-deep: #095c31;
+  --felt-line: #f4e6c0;
+  --felt-ink: #f8fafc;
+  --chip: #dc2626;
+  --chip-come: #2563eb;
 }
 
 * { box-sizing: border-box; }
@@ -142,13 +149,6 @@ button:hover { filter: brightness(1.08); }
   border: 1px solid #fecaca;
 }
 
-.controls .buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.5rem;
-}
-
 .roll-btn {
   background: var(--win);
   width: 100%;
@@ -157,3 +157,133 @@ button:hover { filter: brightness(1.08); }
 }
 
 .muted { color: var(--muted); }
+
+/* --- Green-felt craps table (Phase 4) ------------------------------------ */
+
+.felt {
+  background: radial-gradient(circle at 50% 0, var(--felt), var(--felt-deep));
+  border: 3px solid var(--felt-line);
+  border-radius: 14px;
+  padding: 0.75rem;
+  color: var(--felt-ink);
+  display: grid;
+  gap: 0.6rem;
+  grid-template-areas:
+    "boxes  boxes"
+    "come   dontcome"
+    "come   field"
+    "dont   dont"
+    "pass   pass"
+    "center center";
+  grid-template-columns: 2fr 1fr;
+}
+
+.felt-boxes { grid-area: boxes; }
+.zone-come { grid-area: come; }
+.zone-dontcome { grid-area: dontcome; }
+.zone-field { grid-area: field; }
+.felt-line-dont { grid-area: dont; }
+.felt-line-pass { grid-area: pass; }
+.felt-center { grid-area: center; }
+
+.felt-boxes {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.4rem;
+}
+
+.felt-line {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 0.4rem;
+}
+
+.felt-center {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+}
+
+/* A clickable felt zone: bordered slab of felt with a hover lift. */
+.zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-height: 3rem;
+  padding: 0.6rem 0.5rem;
+  border: 2px solid var(--felt-line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--felt-ink);
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+button.zone { cursor: pointer; }
+button.zone:hover { background: rgba(255, 255, 255, 0.16); filter: none; }
+button.zone:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.zone-num { font-size: 1.4rem; }
+.zone-come { min-height: 5rem; font-size: 1.2rem; }
+.zone-pass, .zone-dontpass { font-size: 1.05rem; }
+
+/* Dimmed, non-clickable authenticity decoration (unsupported bets). */
+.zone-dim {
+  opacity: 0.42;
+  cursor: not-allowed;
+  background: rgba(0, 0, 0, 0.18);
+  border-style: dashed;
+  font-weight: 600;
+}
+
+.zone-tag { font-size: 0.95rem; }
+.zone-sub { font-size: 0.7rem; font-weight: 400; opacity: 0.85; }
+
+/* Chip: a small round token pinned to a zone corner. */
+.chip,
+.chip-come {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  min-width: 1.9rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.chip { background: var(--chip); }
+.chip-come { background: var(--chip-come); left: -0.5rem; right: auto; }
+
+/* Shared stake input + control cluster around the felt. */
+.controls {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.stake-field { font-weight: 700; }
+
+/* Narrow screens: collapse the felt to a single column. */
+@media (max-width: 560px) {
+  .felt {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "boxes"
+      "come"
+      "dontcome"
+      "field"
+      "dont"
+      "pass"
+      "center";
+  }
+  .felt-line { grid-template-columns: 1fr; }
+  .felt-boxes { grid-template-columns: repeat(3, 1fr); }
+  .felt-center { grid-template-columns: 1fr; }
+}

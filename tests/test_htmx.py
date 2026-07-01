@@ -15,6 +15,7 @@ prove that carry-across mechanism.
 
 from __future__ import annotations
 
+import re
 from fractions import Fraction
 
 from fastapi.testclient import TestClient
@@ -255,6 +256,8 @@ def test_place_bet_button_path_shows_bet() -> None:
     sid, _ = _start_game(client, seed=1, starting_bankroll=300)
     resp = client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
     assert resp.status_code == 200
+    # The "Your bets" list names the concrete bet type, and the pass zone's chip
+    # shows the aggregated stake.
     assert "PassLine" in resp.text
     assert "$10" in resp.text
 
@@ -264,6 +267,7 @@ def test_place_bet_free_text_path_shows_bet() -> None:
     sid, _ = _start_game(client, seed=1, starting_bankroll=300)
     resp = client.post(f"/game/{sid}/bet", data={"text": "place 6:6"})
     assert resp.status_code == 200
+    # "Your bets" shows the type + box number; the place-6 chip shows $6.
     assert "PlaceBet" in resp.text
     assert "$6" in resp.text
 
@@ -316,23 +320,36 @@ def test_illegal_bet_renders_refusal_not_500() -> None:
     assert "point" in lowered or "odds" in lowered
 
 
-def test_take_odds_button_gated_on_come_out_then_appears_on_point() -> None:
-    """The Take Odds button is absent on the come-out and present once a point is on."""
+def test_take_odds_zone_gated_on_come_out_then_appears_on_point() -> None:
+    """The odds zone is absent on the come-out and present once a point is on.
+
+    The felt only emits the Take/Lay odds zones inside ``{% if odds_available %}``
+    so an empty ``take `` spec is never rendered. On the come-out no ``take``
+    spec appears at all; after a point establishes the zone carries the concrete
+    point number in its ``hx-vals``.
+    """
     client = _client()
     sid, come_out_html = _start_game(client, seed=1, starting_bankroll=300)
-    assert "Take Odds" not in come_out_html
+    # No odds zone on the come-out: no take spec, no un-rendered template leak.
+    assert '"spec": "take' not in come_out_html
+    assert "take {{" not in come_out_html
 
-    # Roll until a point is established (phase leaves come-out), then re-check.
+    # Roll until a point is established (odds_available), then re-check. The
+    # odds zone is only emitted once a point is on, so its presence is keyed on
+    # the concrete ``take N`` spec appearing.
     html = come_out_html
     for _ in range(20):
         html = client.post(f"/game/{sid}/roll").text
-        if "point " in html:
+        if '"spec": "take ' in html:
             break
-    assert "point " in html, "expected a point to establish within 20 rolls"
-    assert "Take Odds" in html
-    # When present, it targets the live point number, never the empty ``take ``.
-    assert 'value="take {{' not in html
-    assert 'value="take "' not in html
+    match = re.search(r'"spec": "take (\d+)"', html)
+    assert match is not None, "expected an odds zone with a concrete point within 20 rolls"
+    point = match.group(1)
+    assert point in {"4", "5", "6", "8", "9", "10"}
+    # The odds zone carries the concrete point in its hx-vals; no empty/leaked take.
+    assert f'"spec": "take {point}"' in html
+    assert "take {{" not in html
+    assert '"spec": "take "' not in html
 
 
 def test_game_over_banner_and_gated_controls() -> None:
@@ -345,6 +362,72 @@ def test_game_over_banner_and_gated_controls() -> None:
     assert "max rolls reached" in html
     # Roll control must be gated once the game is over.
     assert f"/game/{sid}/roll" not in html
+    # Zone buttons must be disabled once the game is over.
+    assert "disabled" in html
+
+
+# --- felt (visual craps table) tests ----------------------------------------
+
+
+def test_felt_come_out_has_all_flat_zones() -> None:
+    """The come-out felt exposes every playable flat/box zone by canonical spec."""
+    client = _client()
+    _sid, html = _start_game(client, seed=1, starting_bankroll=300)
+    for spec in (
+        "place 4",
+        "place 5",
+        "place 6",
+        "place 8",
+        "place 9",
+        "place 10",
+        "come",
+        "dontcome",
+        "pass",
+        "dontpass",
+    ):
+        assert f'"spec": "{spec}"' in html, f"missing felt zone for {spec!r}"
+
+
+def test_felt_place_zone_click_renders_chip() -> None:
+    """Clicking the Place-4 zone (spec/amount POST) renders a place-4 chip + bet row."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    resp = client.post(f"/game/{sid}/bet", data={"spec": "place 4", "amount": 10})
+    assert resp.status_code == 200
+    html = resp.text
+    # A chip element rendered on the felt, carrying the $10 stake, plus the bet
+    # named in "Your bets". (A bare "4" is not asserted — the static box row has
+    # one on every board, so it would prove nothing.)
+    assert 'class="chip"' in html
+    assert "$10" in html
+    assert "PlaceBet" in html
+
+
+def test_felt_come_zone_click_places_come_bet() -> None:
+    """A bare Come click (spec=come) places a come bet visible in the board."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    resp = client.post(f"/game/{sid}/bet", data={"spec": "come", "amount": 10})
+    assert resp.status_code == 200
+    html = resp.text
+    assert "ComeBet" in html
+    assert "$10" in html
+
+
+def test_felt_has_dimmed_unsupported_decoration() -> None:
+    """Unsupported classic-table areas are present but non-clickable decoration."""
+    client = _client()
+    _sid, html = _start_game(client, seed=1, starting_bankroll=300)
+    # Dimmed decoration is marked aria-disabled and labelled (Field/Hardways).
+    assert "aria-disabled" in html
+    assert "Field" in html
+    # The Field decoration must NOT be a clickable bet button (no hx-post on it).
+    field_start = html.index("Field")
+    # The enclosing element for the Field label carries no hx-post attribute.
+    open_tag = html.rfind("<", 0, field_start)
+    close_tag = html.index(">", field_start)
+    field_block = html[open_tag:close_tag]
+    assert "hx-post" not in field_block
 
 
 def test_unknown_session_bet_is_404() -> None:
