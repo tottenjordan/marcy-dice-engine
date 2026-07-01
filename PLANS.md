@@ -113,6 +113,23 @@ the interactive bankroll to a wallet/cash model. Design note:
 | P7c | engine — free odds require a flat bet + enforce 3-4-5x max at placement | ✅ Done | `b0b6a52` |
 | P7d | web — advisory free-odds units: `odds_unit`/`snap_to_odds_unit`, felt snap + tooltip | ✅ Done | `b4962fd` |
 
+## Phase 8 (come-odds rendering + come-out on/off toggle — done)
+
+Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Back Come / Don't
+Come bets with free odds on their come-point, render those chips on the felt, and
+— faithful to a real table — keep come-odds OFF on the come-out by default with a
+per-bet call-on toggle. Engine-first; `craps_api` renders + adds one route pair.
+
+| # | Item | Status | Commit |
+|---|---|---|---|
+| P8a | engine — come-out-aware odds resolve (`come_out_working`, return-not-orphan, `remains_on_table`) | ✅ Done | |
+| P8b | engine — odds may back a come-point; 3-4-5x cap pools the come backer | ✅ Done | |
+| P8c | engine — `PlayController.set_come_out_working` toggle | ✅ Done | |
+| P8d | board — point-aware come-odds zone keys + BetRow affordance flags | ✅ Done | |
+| P8e | api — `odds-working` route pair (JSON + HTMX) | ✅ Done | |
+| P8f | felt — come-odds box chips + `+ odds` / come-out toggle controls + css | ✅ Done | |
+| P8g | docs — README/CLAUDE/PLANS | ✅ Done | |
+
 ## Phase 3 backlog
 
 Future scope, deliberately out of Phase 3:
@@ -127,9 +144,9 @@ Future scope, deliberately out of Phase 3:
 - **Multi-instance / durable session store.** The web app's `SessionStore` is
   in-memory and single-instance (games are lost on restart, no TTL/eviction). A
   shared store (e.g. Redis) is required before horizontal scaling.
-- **Richer play features.** Free odds on come / don't-come, come-point buttons, a
-  free-cash / affordability bankroll model, bankroll-trajectory charts, and
-  accounts/persistence.
+- **Richer play features.** A free-cash / affordability bankroll model,
+  bankroll-trajectory charts, and accounts/persistence. (Free odds on come /
+  don't-come shipped in Phase 8.)
 
 ## Phase 2 backlog
 

@@ -33,7 +33,7 @@ src/craps_tui/      Textual UI + golden-verify (ONLY place textual/I/O live)
   viewmodel.py   pure parse/format seam over the engine
   app.py         Textual App (Analyze + Verify actions)
   __main__.py    console entry point (craps-tui)
-src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — wallet/cash bankroll (placing deducts, removing refunds; bust still on net worth), advisory place-bet + free-odds units (snap on placement + tooltip), free odds behind the line (require a flat bet, 3-4-5x max), point-ON puck, net %, wide no-scroll dashboard (ONLY place web deps + web I/O live)
+src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — wallet/cash bankroll (placing deducts, removing refunds; bust still on net worth), advisory place-bet + free-odds units (snap on placement + tooltip), free odds behind the line (require a flat bet, 3-4-5x max), free odds on come-points (chip on the box + per-bet come-out ON/OFF toggle, off by default), point-ON puck, net %, wide no-scroll dashboard (ONLY place web deps + web I/O live)
   app.py            FastAPI factory: JSON /api routes + HTMX HTML routes
   session_store.py  in-memory session store over PlayController
   board.py          pure board-context builder for the HTML partial
@@ -72,7 +72,12 @@ free odds behind the line (Take/Lay slots that require a matching flat bet and
 cap the stake at the 3-4-5x table max) with the same advisory-unit treatment
 (clicking a Take/Lay slot snaps the shared stake to the odds ratio's stake leg —
 take 6/8 in $5s, 5/9 in $2s, 4/10 in $1s; lay inverse $6/$3/$2 — plus a per-slot
-tooltip), a point-ON indicator (yellow ring + "ON"
+tooltip), free odds on Come / Don't Come bets (a **+ odds** control on a travelled
+come bet's row backs its come-point under the same 3-4-5x cap, the odds chip
+renders on that come-point's box, and — faithful to a real table — those come-odds
+ride OFF on the come-out by default, returned if the come-point/7 hits there,
+with a per-bet **Come-out: ON/OFF** toggle to call them on), a point-ON indicator
+(yellow ring + "ON"
 puck on the point's box), a Net % beside the Net dollar figure, and a wide-screen
 no-scroll dashboard layout (mobile/narrow layout preserved). `src/craps_api/` is
 the only

@@ -146,6 +146,13 @@ that it carries a set of play-mode conveniences:
   inverse — **$6 / $3 / $2**), so clicking a Take/Lay slot snaps the shared stake
   to that unit and each slot's tooltip advises it. (The JSON API still accepts any
   exact amount within the table max.)
+- **Free odds on Come / Don't Come** — once a Come (or Don't Come) bet travels to
+  its come-point, a **+ odds** control on that bet's row backs it with free odds
+  (pooled under the same 3-4-5× cap), and the odds chip renders right on the
+  come-point's box. Faithful to a real table, those come-odds ride **OFF on the
+  come-out** by default — a come-point or a 7 there simply returns them — with a
+  per-bet **Come-out: ON/OFF** toggle to call them on so they work through the
+  come-out too.
 - **Net percentage** — the running Net dollar figure is shown alongside a Net %
   of the starting bankroll.
 - **Wide-screen no-scroll dashboard** — on wide viewports (`min-width: 1024px`)
@@ -284,7 +291,6 @@ docs/notes/      session notes
 
 ## Roadmap
 
-- Free odds on Come / Don't Come bets
 - Affordability constraints on the play-mode wallet (block a bet larger than the
   cash in hand — placement deduction already lands in the wallet view)
 - Bankroll-trajectory charts on the existing serialization-ready return types
