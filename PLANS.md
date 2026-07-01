@@ -64,7 +64,7 @@ in `craps_api/` (no engine changes, no new routes). Order T1 → T2 → T3.
 | # | Item | Status | Commit |
 |---|---|---|---|
 | T1 | board.py — felt zone-keys + `chip_zones` aggregation (pure) | ✅ Done | `641bcd7` |
-| T2 | _board.html + style.css — clickable felt with chips + dimmed unsupported | ⬜ Pending | |
+| T2 | _board.html + style.css — clickable felt with chips + dimmed unsupported | ✅ Done | `26e0568` |
 | T3 | docs sync (README/CLAUDE) for the visual table | ⬜ Pending | |
 
 ## Phase 3 backlog
