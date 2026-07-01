@@ -230,6 +230,35 @@ def place_unit(number: int) -> int:
     return place_spec(number).payout.stake
 
 
+def snap_to_place_unit(number: int, amount: int) -> int:
+    """Round a Place stake on ``number`` to the nearest whole multiple of its unit.
+
+    Given a target ``amount``, return the closest whole-dollar multiple of
+    :func:`place_unit` for ``number`` -- so the wager always lands on a stake that
+    pays whole dollars (e.g. on the 6/8 the stake snaps to a $6 multiple, on the
+    4/5/9/10 to a $5 multiple). Ties round UP (halfway between two multiples picks
+    the larger), and a positive target never snaps below one unit, so a stake is
+    never silently dropped to $0.
+
+    Examples (``number`` -> unit): ``snap_to_place_unit(6, 10) == 12`` (nearest $6
+    multiple to $10), ``snap_to_place_unit(5, 10) == 10``, ``snap_to_place_unit(8,
+    13) == 12``, ``snap_to_place_unit(6, 3) == 6`` (floor at one unit).
+
+    This is a play-mode convenience for callers that want to enforce efficient
+    stakes (the web felt snaps button/press amounts through it); the engine's own
+    :meth:`~craps_engine.play.PlayController.place_bet` still accepts any positive
+    amount. Delegates validation to :func:`place_unit`, so non-place numbers raise
+    :class:`ValueError`.
+    """
+    unit = place_unit(number)
+    if amount <= unit:
+        return unit
+    quotient, remainder = divmod(amount, unit)
+    if remainder * 2 >= unit:  # round half up to the larger multiple
+        quotient += 1
+    return quotient * unit
+
+
 # ---------------------------------------------------------------------------
 # Free Odds (true odds) ratios.
 # ---------------------------------------------------------------------------

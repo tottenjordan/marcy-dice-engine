@@ -137,12 +137,14 @@ roll count.
 The board is a green-felt craps table whose zones are clickable tiles. On top of
 that it carries a set of play-mode conveniences:
 
-- **Advisory optimal place-bet units** — each Place zone nudges you onto a stake
-  that pays an exact whole-dollar amount: Place **6 / 8** in **$6** units
+- **Optimal place-bet units** — Place payouts only land in whole dollars when the
+  stake is a multiple of the number's unit: Place **6 / 8** in **$6** units
   (pays 7:6), Place **5 / 9** in **$5** units (pays 7:5), Place **4 / 10** in
-  **$5** units (pays 9:5). This is advisory only — surfaced in the zone tooltip
-  and a static felt tip. Your typed stake is **never** changed, and an off-unit
-  bet is still accepted and pays the exact fractional amount.
+  **$5** units (pays 9:5). The felt enforces this: clicking a Place zone snaps the
+  shared stake to the nearest valid multiple (e.g. $10 → $12 on the 6, $10 on the
+  5), and **pressing** a winning Place bet snaps the grown stake the same way. The
+  unit is also surfaced in each zone's tooltip and a static felt tip. (The JSON
+  API still accepts any exact amount for programmatic clients.)
 - **Point ON indicator** — when a point is established, its box number gets a
   yellow ring and an "ON" puck.
 - **Net percentage** — the running Net dollar figure is shown alongside a Net %

@@ -19,6 +19,7 @@ from craps_engine.registry import (
     odds_ratio,
     place_spec,
     place_unit,
+    snap_to_place_unit,
 )
 
 
@@ -75,6 +76,38 @@ def test_place_unit_exact() -> None:
 def test_place_unit_rejects_invalid() -> None:
     with pytest.raises(ValueError, match="place"):
         place_unit(7)
+
+
+def test_snap_to_place_unit_rounds_to_nearest_multiple() -> None:
+    # 6/8 snap to $6 multiples; 4/5/9/10 snap to $5 multiples.
+    assert snap_to_place_unit(6, 10) == 12
+    assert snap_to_place_unit(8, 10) == 12
+    assert snap_to_place_unit(5, 10) == 10
+    assert snap_to_place_unit(9, 10) == 10
+    assert snap_to_place_unit(4, 10) == 10
+    assert snap_to_place_unit(10, 10) == 10
+    # Nearer to the lower multiple stays low; exact multiples are untouched.
+    assert snap_to_place_unit(6, 13) == 12
+    assert snap_to_place_unit(6, 30) == 30
+    assert snap_to_place_unit(5, 30) == 30
+
+
+def test_snap_to_place_unit_ties_round_up() -> None:
+    # Exactly halfway between two multiples rounds UP to the larger.
+    assert snap_to_place_unit(6, 9) == 12  # 9 is halfway between 6 and 12
+    assert snap_to_place_unit(6, 15) == 18  # halfway between 12 and 18
+
+
+def test_snap_to_place_unit_floors_at_one_unit() -> None:
+    # A positive stake below one unit never snaps to $0.
+    assert snap_to_place_unit(6, 1) == 6
+    assert snap_to_place_unit(6, 6) == 6
+    assert snap_to_place_unit(5, 2) == 5
+
+
+def test_snap_to_place_unit_rejects_invalid() -> None:
+    with pytest.raises(ValueError, match="place"):
+        snap_to_place_unit(7, 10)
 
 
 def test_place_spec_keys() -> None:

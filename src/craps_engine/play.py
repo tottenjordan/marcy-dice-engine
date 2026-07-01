@@ -25,17 +25,19 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import TYPE_CHECKING, TypedDict
 
 from craps_engine.bets.base import ResolutionStatus
+from craps_engine.bets.place import PlaceBet
 from craps_engine.money import serialize_fraction
+from craps_engine.registry import snap_to_place_unit
 from craps_engine.session import SessionConfig, Table
 from craps_engine.specs import BetSpec, build_bet, parse_bet_spec
 from craps_engine.state import Phase
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from fractions import Fraction
 
     from craps_engine.bets.base import Bet, BetPayload, Resolution, ResolutionPayload
     from craps_engine.dice import Dice, DiceRoll, DiceRollPayload
@@ -340,7 +342,7 @@ class PlayController:
             view=self.snapshot(),
         )
 
-    def press_bet(self, bet_id: str) -> PlaceOutcome:
+    def press_bet(self, bet_id: str, *, snap_place_to_unit: bool = False) -> PlaceOutcome:
         """Press a bet BY ITS WINNINGS from the most recent roll; NEVER raises.
 
         "Pressing" grows a wager using the money it just won: the bet's
@@ -364,6 +366,14 @@ class PlayController:
         net-worth-neutral cash->chips transfer), leaving the bankroll unchanged.
         Reuses the :class:`PlaceOutcome` shape so callers handle it like a
         placement result.
+
+        When ``snap_place_to_unit`` is set and the pressed bet is a Place bet, the
+        grown stake is rounded to the nearest whole multiple of that number's
+        optimal unit (:func:`~craps_engine.registry.snap_to_place_unit`) so the
+        pressed wager keeps paying whole dollars -- the play-mode felt opts in so
+        pressing mirrors the same unit snapping placement uses. Left off by
+        default, so the exact "grow by winnings" behaviour is unchanged for the
+        JSON API and other callers.
         """
         if self._game_over:
             return PlaceOutcome(
@@ -401,7 +411,11 @@ class PlayController:
                 view=self.snapshot(),
             )
 
-        bet.amount += win.delta
+        grown = bet.amount + win.delta
+        if snap_place_to_unit and isinstance(bet, PlaceBet):
+            # Round the grown stake to whole dollars, then to its unit multiple.
+            grown = Fraction(snap_to_place_unit(bet.number, round(grown)))
+        bet.amount = grown
         self._pressed_this_roll.add(bet_id)
         return PlaceOutcome(
             ok=True,

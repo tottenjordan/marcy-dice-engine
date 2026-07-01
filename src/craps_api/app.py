@@ -36,7 +36,8 @@ from pydantic import BaseModel
 from craps_api.board import build_board_context
 from craps_api.session_store import SessionNotFoundError, SessionStore
 from craps_engine.play import coaching_hint
-from craps_engine.specs import BetSpec
+from craps_engine.registry import snap_to_place_unit
+from craps_engine.specs import BetSpec, parse_bet_spec
 
 if TYPE_CHECKING:
     from craps_engine.play import (
@@ -178,8 +179,28 @@ def _place_from_form(
     if text:
         return controller.place_bet_text(text).message
     if spec and spec.strip():
-        return controller.place_bet_text(f"{spec}:{amount}").message
+        stake = _snap_place_stake(spec, amount)
+        return controller.place_bet_text(f"{spec}:{stake}").message
     return ""
+
+
+def _snap_place_stake(spec: str, amount: int) -> int:
+    """Round a Place-zone button's shared stake to that number's optimal unit.
+
+    The felt places bets from ONE shared stake box, so a raw ``$10`` on the 6
+    would pay a fractional ``$11.67``. For a ``place N`` spec, snap the stake to
+    the nearest whole multiple of :func:`~craps_engine.registry.place_unit`
+    (6/8 -> $6s, 4/5/9/10 -> $5s) so the payout lands in whole dollars. Any
+    non-place spec -- or an unparseable one, which the controller will flash as an
+    error -- is returned unchanged.
+    """
+    try:
+        parsed = parse_bet_spec(f"{spec}:{amount}")
+    except ValueError:
+        return amount
+    if parsed.kind == "place" and parsed.number is not None:
+        return snap_to_place_unit(parsed.number, amount)
+    return amount
 
 
 def create_app() -> FastAPI:  # noqa: C901 (a route-registration factory: each route is a closure over ``store``/``templates``)
@@ -316,7 +337,8 @@ def create_app() -> FastAPI:  # noqa: C901 (a route-registration factory: each r
     ) -> HTMLResponse:
         """Press a just-won bet by id and return the board partial (refusal flashed)."""
         controller = _controller_or_404(store, session_id)
-        flash = controller.press_bet(bet_id).message
+        # Felt presses snap the grown Place stake to its unit, mirroring placement.
+        flash = controller.press_bet(bet_id, snap_place_to_unit=True).message
         return _render_board(
             templates, request, session_id=session_id, view=controller.snapshot(), flash=flash
         )

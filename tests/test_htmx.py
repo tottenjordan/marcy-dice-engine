@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 from craps_api.app import create_app
 from craps_api.board import _DIE_FACES, _zone_key, build_board_context
 from craps_engine.money import serialize_fraction
+from craps_engine.registry import place_unit
 
 
 def _client() -> TestClient:
@@ -516,6 +517,80 @@ def test_place_bet_free_text_path_shows_bet() -> None:
     # "Your bets" shows the type + box number; the place-6 chip shows $6.
     assert "PlaceBet" in resp.text
     assert "$6" in resp.text
+
+
+def _placed_amounts(client: TestClient, sid: str) -> dict[int, int]:
+    """Map each active Place bet's box number to its whole-dollar stake (via JSON)."""
+    snap = client.get(f"/api/game/{sid}").json()
+    return {b["number"]: _amount_dollars(b["amount"]) for b in snap["active_bets"]}
+
+
+def test_place_button_snaps_stake_to_six_units_on_6_and_8() -> None:
+    """A $10 felt stake on the 6 or 8 snaps up to the nearest $6 multiple ($12)."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    client.post(f"/game/{sid}/bet", data={"spec": "place 6", "amount": 10})
+    client.post(f"/game/{sid}/bet", data={"spec": "place 8", "amount": 10})
+    amounts = _placed_amounts(client, sid)
+    assert amounts[6] == 12
+    assert amounts[8] == 12
+
+
+def test_place_button_snaps_stake_to_five_units_on_5_9_4_10() -> None:
+    """A $12 felt stake on the 5/9/4/10 snaps to the nearest $5 multiple ($10)."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    for n in (5, 9, 4, 10):
+        client.post(f"/game/{sid}/bet", data={"spec": f"place {n}", "amount": 12})
+    amounts = _placed_amounts(client, sid)
+    assert amounts[5] == 10
+    assert amounts[9] == 10
+    assert amounts[4] == 10
+    assert amounts[10] == 10
+
+
+def test_unparseable_place_spec_is_not_snapped_and_flashes() -> None:
+    """An invalid place spec skips snapping and is flashed by the controller (no 500)."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    resp = client.post(f"/game/{sid}/bet", data={"spec": "place 7", "amount": 10})
+    assert resp.status_code == 200
+    # Nothing was placed; the refusal is surfaced rather than raising.
+    assert "No active bets." in resp.text
+
+
+def test_non_place_button_stake_is_not_snapped() -> None:
+    """Snapping is Place-only: a Pass Line stake is placed exactly as typed."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 13})
+    snap = client.get(f"/api/game/{sid}").json()
+    pass_row = next(b for b in snap["active_bets"] if b["type"] == "PassLine")
+    assert _amount_dollars(pass_row["amount"]) == 13
+
+
+def test_press_snaps_grown_place_stake_to_unit() -> None:
+    """Pressing a Place bet snaps the grown stake to a whole unit multiple."""
+    client = _client()
+    sid, _ = _start_game(client, seed=5, starting_bankroll=1000)
+    point = _establish_point_html(client, sid)
+    client.post(f"/game/{sid}/bet", data={"spec": f"place {point}", "amount": 12})
+
+    bet_id = ""
+    for _ in range(40):
+        html = client.post(f"/game/{sid}/roll").text
+        if re.search(r"place\d+: win", html):
+            bet_id = _place_win_id(html)
+            break
+    assert bet_id, "place bet never won within cap"
+
+    client.post(f"/game/{sid}/press", data={"bet_id": bet_id})
+    snap = client.get(f"/api/game/{sid}").json()
+    row = next(b for b in snap["active_bets"] if b["id"] == bet_id)
+    pressed = _amount_dollars(row["amount"])
+    assert pressed % place_unit(point) == 0, (
+        f"pressed stake {pressed} is not a whole multiple of the ${place_unit(point)} unit"
+    )
 
 
 def test_roll_updates_dice_and_rolls_used() -> None:
