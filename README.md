@@ -93,31 +93,12 @@ Lens A (single-roll EV) = 7/9
 Lens B (house drag)     = 7/22
 ```
 
-## Interactive TUI
-
-```bash
-uv run craps-tui
-```
-
-Type a comma- or newline-separated set of bets and a point, then press **Analyze**
-(`a`) to get the net-payout matrix and both EV lenses (Lens A / Lens B). For
-example:
-
-```
-dontpass:10, place 6:6, place 8:6      point = 4
-```
-
-Press **Verify** (`v`) to run the golden math self-check (see below). `textual`
-lives in its own `ui` dependency group so it never becomes a runtime dependency
-of the engine (`[project.dependencies]` stays empty); `[tool.uv] default-groups`
-syncs it into the local dev venv automatically, so `uv run craps-tui` just works.
-
 ## Web app
 
 A deployable **FastAPI + HTMX play-mode web app** — a browser front end where you
 actually *play* a session: place bets via clickable felt zones or a free-text box,
 roll the dice, and watch a live bankroll with data-driven coaching hints. This is
-distinct from the analyzer TUI above (which computes static odds/EV): the web app
+distinct from the analyzer TUI below (which computes static odds/EV): the web app
 drives the same pure engine through a `PlayController` and an in-memory session
 store. Web dependencies (FastAPI / uvicorn / Jinja2) live only in the `web`
 dependency group and only inside `src/craps_api/`, mirroring how `craps_tui`
@@ -217,6 +198,30 @@ rather than from a built wheel on purpose: the wheel packages only `craps_engine
 not `craps_api` or its `templates/`/`static/` data files, so `uv sync` (which does
 the editable-style install exposing all of `src/`) is what makes the web app
 available at runtime.
+
+## Interactive TUI
+
+<details>
+<summary>Textual calculator for static odds/EV analysis (<code>uv run craps-tui</code>)</summary>
+
+```bash
+uv run craps-tui
+```
+
+Type a comma- or newline-separated set of bets and a point, then press **Analyze**
+(`a`) to get the net-payout matrix and both EV lenses (Lens A / Lens B). For
+example:
+
+```
+dontpass:10, place 6:6, place 8:6      point = 4
+```
+
+Press **Verify** (`v`) to run the golden math self-check (see below). `textual`
+lives in its own `ui` dependency group so it never becomes a runtime dependency
+of the engine (`[project.dependencies]` stays empty); `[tool.uv] default-groups`
+syncs it into the local dev venv automatically, so `uv run craps-tui` just works.
+
+</details>
 
 ## Verify the math
 
