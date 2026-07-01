@@ -122,13 +122,13 @@ per-bet call-on toggle. Engine-first; `craps_api` renders + adds one route pair.
 
 | # | Item | Status | Commit |
 |---|---|---|---|
-| P8a | engine — come-out-aware odds resolve (`come_out_working`, return-not-orphan, `remains_on_table`) | ✅ Done | |
-| P8b | engine — odds may back a come-point; 3-4-5x cap pools the come backer | ✅ Done | |
-| P8c | engine — `PlayController.set_come_out_working` toggle | ✅ Done | |
-| P8d | board — point-aware come-odds zone keys + BetRow affordance flags | ✅ Done | |
-| P8e | api — `odds-working` route pair (JSON + HTMX) | ✅ Done | |
-| P8f | felt — come-odds box chips + `+ odds` / come-out toggle controls + css | ✅ Done | |
-| P8g | docs — README/CLAUDE/PLANS | ✅ Done | |
+| P8a | engine — come-out-aware odds resolve (`come_out_working`, return-not-orphan, `remains_on_table`) | ✅ Done | `f707555` |
+| P8b | engine — odds may back a come-point; 3-4-5x cap pools the come backer | ✅ Done | `f707555` |
+| P8c | engine — `PlayController.set_come_out_working` toggle | ✅ Done | `f707555` |
+| P8d | board — point-aware come-odds zone keys + BetRow affordance flags | ✅ Done | `3171975` |
+| P8e | api — `odds-working` route pair (JSON + HTMX) | ✅ Done | `3171975` |
+| P8f | felt — come-odds box chips + `+ odds` / come-out toggle controls + css | ✅ Done | `3171975` |
+| P8g | docs — README/CLAUDE/PLANS | ✅ Done | `978cc69` |
 
 ## Phase 3 backlog
 
