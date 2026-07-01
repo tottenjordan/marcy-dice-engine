@@ -323,6 +323,111 @@ def test_take_odds_accumulate_toward_the_max() -> None:
     assert "max" in over.message
 
 
+# --- odds on come-points: back a come bet, not just the puck point -----------
+
+
+def _puck4_with_come_on_6(kind: str) -> PlayController:
+    """Puck point 4 set, a ``kind`` (come/dontcome) bet travelled to come-point 6.
+
+    Rolls (2,2)=4 on the come-out to set the puck point (no flat needed), places
+    the come-family bet while it is still coming, then rolls (3,3)=6 so it
+    establishes come-point 6 while the puck point stays 4.
+    """
+    ctrl = PlayController(ScriptedDice([(2, 2), (3, 3)]), _config())
+    ctrl.roll()  # puck point 4 (no bets required to set it)
+    ctrl.place_bet_text(f"{kind}:10")
+    ctrl.roll()  # (3,3)=6 -> the come bet travels to come-point 6; puck stays 4
+    return ctrl
+
+
+def test_take_odds_on_come_point_backed_by_come_bet() -> None:
+    """Take odds may back a come-point (≠ puck point) off the Come bet alone."""
+    ctrl = _puck4_with_come_on_6("come")
+    assert ctrl.snapshot().point == 4  # puck point unchanged
+    out = ctrl.place_bet(BetSpec("take", 30, number=6))  # backed by come $10 (5x=$50)
+    assert out.ok is True
+
+
+def test_lay_odds_on_come_point_backed_by_dont_come() -> None:
+    """Lay odds may back a come-point off the Don't Come bet alone."""
+    ctrl = _puck4_with_come_on_6("dontcome")
+    out = ctrl.place_bet(BetSpec("lay", 30, number=6))
+    assert out.ok is True
+
+
+def test_odds_on_number_without_backer_rejected() -> None:
+    """Odds on a number that is neither the puck point nor a come-point are refused."""
+    ctrl = PlayController(ScriptedDice([(2, 2)]), _config())
+    ctrl.roll()  # puck point 4, nothing else on the table
+    out = ctrl.place_bet(BetSpec("take", 10, number=6))  # 6 is not puck nor a come-point
+    assert out.ok is False
+    assert "come-point" in out.message
+
+
+def test_take_odds_wrong_side_come_backer_rejected() -> None:
+    """A Don't Come on 6 does NOT back TAKE odds on 6 (wrong side)."""
+    ctrl = _puck4_with_come_on_6("dontcome")
+    out = ctrl.place_bet(BetSpec("take", 10, number=6))
+    assert out.ok is False
+
+
+def test_come_odds_respect_max_off_come_bet_stake() -> None:
+    """The 3-4-5x cap on come-odds pools off the backing come bet's stake."""
+    ctrl = _puck4_with_come_on_6("come")  # come $10 on point 6 -> 5x max = $50
+    assert ctrl.place_bet(BetSpec("take", 50, number=6)).ok is True
+    over = ctrl.place_bet(BetSpec("take", 10, number=6))  # 60 > 50
+    assert over.ok is False
+    assert "max" in over.message
+
+
+# --- come-out on/off toggle for come-odds ------------------------------------
+
+
+def test_set_come_out_working_flips_the_flag() -> None:
+    """Calling odds ON for the come-out sets the bet's come_out_working flag."""
+    ctrl = _puck4_with_come_on_6("come")
+    placed = ctrl.place_bet(BetSpec("take", 30, number=6))
+    assert placed.ok is True
+    bet_id = placed.view.active_bets[-1].id
+
+    on = ctrl.set_come_out_working(bet_id, working=True)
+    assert on.ok is True
+    bet = next(b for b in on.view.active_bets if b.id == bet_id)
+    assert bet.come_out_working is True  # type: ignore[attr-defined]
+
+    off = ctrl.set_come_out_working(bet_id, working=False)
+    bet = next(b for b in off.view.active_bets if b.id == bet_id)
+    assert bet.come_out_working is False  # type: ignore[attr-defined]
+
+
+def test_set_come_out_working_unknown_id_rejected() -> None:
+    ctrl = PlayController(ScriptedDice([]), _config())
+    out = ctrl.set_come_out_working("nope", working=True)
+    assert out.ok is False
+
+
+def test_set_come_out_working_non_odds_bet_rejected() -> None:
+    """The toggle only applies to odds bets, not a Pass Line flat."""
+    ctrl = PlayController(ScriptedDice([]), _config())
+    placed = ctrl.place_bet_text("pass:10")
+    bet_id = placed.view.active_bets[-1].id
+    out = ctrl.set_come_out_working(bet_id, working=True)
+    assert out.ok is False
+
+
+def test_set_come_out_working_after_game_over_rejected() -> None:
+    ctrl = PlayController(
+        ScriptedDice([(2, 2), (3, 4)]),
+        _config(starting_bankroll=Fraction(10), loss_limit=Fraction(0)),
+    )
+    ctrl.place_bet_text("pass:10")
+    ctrl.roll()  # point 4
+    ctrl.roll()  # 7-out -> bust, game over
+    out = ctrl.set_come_out_working("take0", working=True)
+    assert out.ok is False
+    assert "game over" in out.message
+
+
 # --- seed reproducibility ---------------------------------------------------
 
 

@@ -29,7 +29,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, TypedDict
 
 from craps_engine.bets.base import ResolutionStatus
-from craps_engine.bets.odds import MAX_ODDS_MULTIPLIER
+from craps_engine.bets.odds import MAX_ODDS_MULTIPLIER, _OddsBet
 from craps_engine.bets.place import PlaceBet
 from craps_engine.money import serialize_fraction
 from craps_engine.registry import snap_to_place_unit
@@ -47,15 +47,16 @@ if TYPE_CHECKING:
 # The odds kinds that are legal only once a point is established.
 _ODDS_KINDS = frozenset({"take", "lay"})
 
-#: Odds kind -> (flat backer class name, this side's odds class name, flat label
-#: for messages). A take-odds bet must be backed by a Pass Line flat, a lay-odds
-#: bet by a Don't Pass flat. Come / Don't-Come bets can't back these: an odds bet
-#: must back the CURRENT puck point, and a come-point can never equal the puck
-#: point (making the point ends the point phase), so those backers are
-#: unreachable here. Name-string matching mirrors the ``_LINE_BET_NAMES`` idiom.
-_ODDS_BACKING: dict[str, tuple[str, str, str]] = {
-    "take": ("PassLine", "TakeOdds", "Pass Line"),
-    "lay": ("DontPass", "LayOdds", "Don't Pass"),
+#: Odds kind -> (flat backer class, come backer class, this side's odds class,
+#: backer label for messages). Take odds are backed by a Pass Line flat on the
+#: PUCK point OR a Come bet riding this come-point; lay odds by a Don't Pass flat
+#: on the puck point OR a Don't Come riding this come-point. Because a come-point
+#: can never equal the puck point (making the point ends the point phase), a
+#: given odds ``number`` unambiguously identifies which it backs. Name-string
+#: matching mirrors the ``_LINE_BET_NAMES`` idiom.
+_ODDS_BACKING: dict[str, tuple[str, str, str, str]] = {
+    "take": ("PassLine", "ComeBet", "TakeOdds", "Pass Line/Come"),
+    "lay": ("DontPass", "DontCome", "LayOdds", "Don't Pass/Don't Come"),
 }
 
 #: Max rolls retained/shown in the recent-roll history tracker.
@@ -295,9 +296,10 @@ class PlayController:
         """Place one validated :class:`BetSpec`; NEVER raises.
 
         Illegal placements are rejected with ``ok=False`` and a message rather
-        than an exception: the game being over, odds attempted off a point, or
-        odds that do not back the current point. On success the bet is added to
-        the table with a freshly-minted unique id.
+        than an exception: the game being over, or odds that back neither the
+        current puck point nor an established come-point (or that break the
+        flat-bet / 3-4-5x table rules). On success the bet is added to the table
+        with a freshly-minted unique id.
         """
         if self._game_over:
             return PlaceOutcome(
@@ -324,69 +326,87 @@ class PlayController:
     def _reject_illegal_odds(self, spec: BetSpec) -> PlaceOutcome | None:
         """Return a rejection for illegal take/lay odds, else ``None``.
 
-        Odds are legal only while a point is established, only when they back that
-        exact point, and only as true "behind the line" wagers: they need a flat
-        bet behind them and may not exceed the 3-4-5x table maximum (delegated to
-        :meth:`_reject_odds_table_rules`). Returns ``None`` when the odds are
-        legal.
+        Odds are legal only when they back an active number -- either the CURRENT
+        puck point or an established come-point on the matching side (a Come bet
+        for take odds, a Don't Come for lay) -- and only as true "behind the line"
+        wagers: they need a flat/come bet behind them and may not exceed the
+        3-4-5x table maximum (delegated to :meth:`_reject_odds_table_rules`).
+        Because a come-point never equals the puck point, the odds ``number``
+        alone identifies which it backs, so this also covers come-odds placed
+        while the table sits on the come-out. Returns ``None`` when legal.
         """
-        if self._table.state.phase is not Phase.POINT:
+        number = spec.number
+        if number is None:  # pragma: no cover - the parser guarantees odds carry a number
             return PlaceOutcome(
                 ok=False,
-                message="odds require an established point",
+                message="odds must name a point",
                 view=self.snapshot(),
             )
-        point = self._table.state.point
-        if point is None or spec.number != point:
+        puck = self._table.state.point
+        backs_puck = puck is not None and number == puck
+        _flat, come_name, _odds, _label = _ODDS_BACKING[spec.kind]
+        backs_come_point = any(
+            type(bet).__name__ == come_name and getattr(bet, "come_point", None) == number
+            for bet in self._table.active_bets()
+        )
+        if not backs_puck and not backs_come_point:
             return PlaceOutcome(
                 ok=False,
-                message=f"odds must back the current point ({point})",
+                message="odds must back the current point or an established come-point",
                 view=self.snapshot(),
             )
-        return self._reject_odds_table_rules(spec, point)
+        return self._reject_odds_table_rules(spec, number)
 
-    def _reject_odds_table_rules(self, spec: BetSpec, point: int) -> PlaceOutcome | None:
+    def _reject_odds_table_rules(self, spec: BetSpec, number: int) -> PlaceOutcome | None:
         """Reject naked or over-max odds; return ``None`` when the odds are legal.
 
         Enforces two real-casino table rules at PLACEMENT time (an odds bet's
         ``resolve`` still settles whatever stake is down -- see the MAX-ODDS
         POLICY note in :mod:`craps_engine.bets.odds`):
 
-        * **A flat bet is required.** Take odds must be backed by a Pass Line bet,
-          lay odds by a Don't Pass bet; without one the odds are "naked" and
-          refused.
-        * **3-4-5x maximum.** The total odds on a point may not exceed the flat
-          backing times the point's cap (3x on 4/10, 4x on 5/9, 5x on 6/8, from
-          :data:`~craps_engine.bets.odds.MAX_ODDS_MULTIPLIER`). Odds already on
-          the point pool toward that ceiling, so repeated placements/presses can't
+        * **A backing bet is required.** Take odds must be backed by a Pass Line
+          bet on the puck point OR a Come bet riding this ``number``; lay odds by a
+          Don't Pass on the puck point OR a Don't Come riding ``number``. Without
+          one the odds are "naked" and refused.
+        * **3-4-5x maximum.** The total odds on ``number`` may not exceed the
+          pooled backing times its cap (3x on 4/10, 4x on 5/9, 5x on 6/8, from
+          :data:`~craps_engine.bets.odds.MAX_ODDS_MULTIPLIER`). Odds already on the
+          number pool toward that ceiling, so repeated placements/presses can't
           slip past it.
         """
-        flat_name, odds_name, flat_label = _ODDS_BACKING[spec.kind]
+        flat_name, come_name, odds_name, flat_label = _ODDS_BACKING[spec.kind]
+        puck = self._table.state.point
+        backs_puck = puck is not None and number == puck
         backing = sum(
-            (bet.amount for bet in self._table.active_bets() if type(bet).__name__ == flat_name),
+            (
+                bet.amount
+                for bet in self._table.active_bets()
+                if (backs_puck and type(bet).__name__ == flat_name)
+                or (type(bet).__name__ == come_name and getattr(bet, "come_point", None) == number)
+            ),
             Fraction(0),
         )
         if backing == 0:
             return PlaceOutcome(
                 ok=False,
-                message=f"{spec.kind} odds require a {flat_label} bet on {point}",
+                message=f"{spec.kind} odds require a {flat_label} bet on {number}",
                 view=self.snapshot(),
             )
         existing = sum(
             (
                 bet.amount
                 for bet in self._table.active_bets()
-                if type(bet).__name__ == odds_name and getattr(bet, "number", None) == point
+                if type(bet).__name__ == odds_name and getattr(bet, "number", None) == number
             ),
             Fraction(0),
         )
-        mult = MAX_ODDS_MULTIPLIER[point]
+        mult = MAX_ODDS_MULTIPLIER[number]
         max_odds = mult * backing
         if existing + spec.amount > max_odds:
             return PlaceOutcome(
                 ok=False,
                 message=(
-                    f"odds exceed the {mult}x max on {point} "
+                    f"odds exceed the {mult}x max on {number} "
                     f"(max ${_dollar_str(max_odds)}, ${_dollar_str(existing)} already up)"
                 ),
                 view=self.snapshot(),
@@ -521,6 +541,48 @@ class PlayController:
         return PlaceOutcome(
             ok=True,
             message=f"pressed {bet_id} to {bet.amount}",
+            view=self.snapshot(),
+        )
+
+    def set_come_out_working(self, bet_id: str, *, working: bool) -> PlaceOutcome:
+        """Call an odds bet ON or OFF for the come-out roll; NEVER raises.
+
+        Free odds ride OFF on the come-out by default (real-table behaviour); this
+        lets a player working a come-bet's odds "call them on" so they settle on
+        the come-out too (or turn them back off). Only odds bets carry the
+        ``come_out_working`` flag, so this is refused for any other bet type.
+
+        Refused (``ok=False``) once the game is over, when no live bet carries
+        ``bet_id``, or when that bet is not an odds bet. On success the flag is set
+        and a fresh snapshot returned, reusing the :class:`PlaceOutcome` shape so
+        callers handle it like a placement result.
+        """
+        if self._game_over:
+            return PlaceOutcome(
+                ok=False,
+                message=f"game over ({self._reason})",
+                view=self.snapshot(),
+            )
+
+        bet = next((b for b in self._table.active_bets() if b.id == bet_id), None)
+        if bet is None:
+            return PlaceOutcome(
+                ok=False,
+                message=f"no bet with id {bet_id!r} to toggle",
+                view=self.snapshot(),
+            )
+        if not isinstance(bet, _OddsBet):
+            return PlaceOutcome(
+                ok=False,
+                message=f"bet {bet_id!r} is not an odds bet; only odds work on the come-out",
+                view=self.snapshot(),
+            )
+
+        bet.come_out_working = working
+        state = "on" if working else "off"
+        return PlaceOutcome(
+            ok=True,
+            message=f"called {bet_id} odds {state} for the come-out",
             view=self.snapshot(),
         )
 
