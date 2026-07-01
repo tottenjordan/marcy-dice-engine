@@ -33,7 +33,7 @@ src/craps_tui/      Textual UI + golden-verify (ONLY place textual/I/O live)
   viewmodel.py   pure parse/format seam over the engine
   app.py         Textual App (Analyze + Verify actions)
   __main__.py    console entry point (craps-tui)
-src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — advisory place-bet units, point-ON puck, net %, wide no-scroll dashboard (ONLY place web deps + web I/O live)
+src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — wallet/cash bankroll (placing deducts, removing refunds; bust still on net worth), advisory place-bet units, point-ON puck, net %, wide no-scroll dashboard (ONLY place web deps + web I/O live)
   app.py            FastAPI factory: JSON /api routes + HTMX HTML routes
   session_store.py  in-memory session store over PlayController
   board.py          pure board-context builder for the HTML partial
@@ -61,12 +61,16 @@ uv run craps-web    # FastAPI + HTMX play-mode app on http://localhost:8000/
 ```
 
 Play on a clickable green-felt table (or the free-text bet box), roll dice, and
-watch a live bankroll with coaching hints. The felt carries betting guidance and
-polish: advisory optimal place-bet units (tooltip + tip — $6 for 6/8, $5 for
-5/9 and 4/10; the typed stake is never changed and off-unit bets still resolve
-with fractional payout), a point-ON indicator (yellow ring + "ON" puck on the
-point's box), a Net % beside the Net dollar figure, and a wide-screen no-scroll
-dashboard layout (mobile/narrow layout preserved). `src/craps_api/` is the only
+watch a live **wallet/cash bankroll** with coaching hints: placing a bet deducts
+its stake from the shown bankroll (and Net), removing refunds it, and a win adds
+the profit, so `bankroll + at-risk` always equals net worth. Bust is still judged
+on net worth (chips on the felt don't end the game); the analyzer/Monte Carlo
+keep the net-worth accounting. The felt carries betting guidance and polish:
+optimal place-bet units (Place 6/8 snap to $6 multiples, 5/9/4/10 to $5, on both
+placement and press; tooltip + tip; the JSON API still accepts any exact amount),
+a point-ON indicator (yellow ring + "ON" puck on the point's box), a Net % beside
+the Net dollar figure, and a wide-screen no-scroll dashboard layout (mobile/narrow
+layout preserved). `src/craps_api/` is the only
 place web deps (FastAPI/uvicorn) and HTTP I/O live, mirroring how `craps_tui`
 isolates Textual. A root `Dockerfile` builds a deployable image
 (`uv sync --group web`, then `uv run craps-web`). Screenshots for the README are

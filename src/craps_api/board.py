@@ -144,6 +144,13 @@ class BetRow(TypedDict):
     type: str
     amount: str
     working: bool
+    #: Whether this bet is EFFECTIVELY live right now (exposed to the dice), which
+    #: is not the same as the raw ``working`` flag: a Place bet is live during the
+    #: point regardless of ``working`` (it is off only on the come-out), matching
+    #: :meth:`craps_engine.bets.place.PlaceBet._is_live`. The template shows an
+    #: ``(off)`` marker when this is ``False``, so a working-during-point place bet
+    #: is correctly NOT flagged off.
+    live: bool
     number: int | None
     come_point: int | None
     #: Whether a "take it down" control should be offered for this row (the game
@@ -198,9 +205,10 @@ class BoardContext(TypedDict):
     #: The same immutable :data:`_PLACE_UNITS` table every call — the units are
     #: fixed craps math (the payout ratio's stake leg), not per-view state.
     place_units: dict[str, int]
-    #: Summed dollar stake of the WORKING active bets — the money currently
-    #: exposed to the dice. Summed as exact :class:`Fraction` before formatting;
-    #: non-working bets are excluded; ``"$0"`` when nothing is at risk.
+    #: Summed dollar stake of ALL active bets — the money on the felt, i.e. the
+    #: wallet model's "on table" total. Summed as exact :class:`Fraction` before
+    #: formatting; every active stake is counted so ``bankroll + total_at_risk``
+    #: equals net worth; ``"$0"`` when nothing is on the table.
     total_at_risk: str
     #: Signed dollar swing from the last roll (``Σ delta`` over ``last_outcomes``),
     #: e.g. ``+$7`` / ``-$12`` / ``$0``. Empty string ``""`` before any roll (no
@@ -377,6 +385,25 @@ def _bet_ids_with_win(view: GameViewPayload) -> set[str]:
     return {res["bet_id"] for res in view["last_outcomes"] if res["status"] == "win"}
 
 
+def _bet_is_live(bet: BetPayload, *, in_point: bool) -> bool:
+    """Whether ``bet`` is effectively exposed to the dice right now.
+
+    This is broader than the raw ``working`` flag: a Place bet is live during the
+    point regardless of ``working`` (it is switched off only on the come-out),
+    matching :meth:`craps_engine.bets.place.PlaceBet._is_live`. Every other bet
+    type is live iff its ``working`` flag is set. Used to drive the template's
+    ``(off)`` marker so a place bet resting on its point is not mislabelled off.
+
+    Args:
+        bet: A serialized active-bet payload.
+        in_point: Whether the table phase is POINT (precomputed once per board).
+
+    Returns:
+        ``True`` if the bet is currently live.
+    """
+    return bool(bet["working"]) or (bet["type"] == "PlaceBet" and in_point)
+
+
 def build_board_context(
     view: GameViewPayload,
     *,
@@ -413,12 +440,14 @@ def build_board_context(
     # the game is still live. Precompute the winning-id set once for the rows.
     can_remove = not game_over
     winning_ids = _bet_ids_with_win(view)
+    in_point = view["phase"] == "point"
     active_bets: list[BetRow] = [
         {
             "id": bet["id"],
             "type": bet["type"],
             "amount": _dollars(bet["amount"]),
             "working": bet["working"],
+            "live": _bet_is_live(bet, in_point=in_point),
             "number": bet.get("number"),
             "come_point": bet.get("come_point"),
             "can_remove": can_remove,
@@ -426,10 +455,14 @@ def build_board_context(
         }
         for bet in view["active_bets"]
     ]
-    # Money currently exposed to the dice: sum the WORKING bets' stakes as exact
-    # Fractions before formatting so the total never drifts (``$0`` when none).
+    # "At risk" == the wallet model's on-table total: sum EVERY active bet's stake
+    # (not just the working ones) as exact Fractions before formatting. Under the
+    # wallet view the bankroll already had all these stakes subtracted, so
+    # ``bankroll + total_at_risk == net worth``; summing all stakes keeps that
+    # identity and also shows a point-live place bet's chips (which carry
+    # ``working=False`` yet are exposed) in the badge. ``$0`` when none.
     risk_total = sum(
-        (_fraction_from_payload(bet["amount"]) for bet in view["active_bets"] if bet["working"]),
+        (_fraction_from_payload(bet["amount"]) for bet in view["active_bets"]),
         Fraction(0),
     )
     total_at_risk = f"${_money_body(risk_total)}"

@@ -241,7 +241,7 @@ def test_bet_rows_carry_number_and_come_point() -> None:
 # --- risk / history / odds-tip / row-affordance unit tests ------------------
 
 
-def test_total_at_risk_sums_only_working_bets_exactly() -> None:
+def test_total_at_risk_sums_all_active_bets_exactly() -> None:
     payload = _base_payload(
         active_bets=[
             _bet("PlaceBet", 6, number=6),
@@ -252,7 +252,9 @@ def test_total_at_risk_sums_only_working_bets_exactly() -> None:
     assert ctx["total_at_risk"] == "$12"
 
 
-def test_total_at_risk_excludes_non_working_bet() -> None:
+def test_total_at_risk_includes_non_working_bet() -> None:
+    # Under the wallet model "at risk" is every stake on the felt, so an off
+    # (non-working) bet is still counted — its chips are on the table.
     payload = _base_payload(
         active_bets=[
             _bet("PlaceBet", 6, number=6),
@@ -260,12 +262,40 @@ def test_total_at_risk_excludes_non_working_bet() -> None:
         ],
     )
     ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
-    assert ctx["total_at_risk"] == "$6"
+    assert ctx["total_at_risk"] == "$12"
 
 
 def test_total_at_risk_zero_when_no_bets() -> None:
     ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
     assert ctx["total_at_risk"] == "$0"
+
+
+def test_bet_row_live_true_for_working_bet() -> None:
+    payload = _base_payload(active_bets=[_bet("PassLine", 10)])
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["active_bets"][0]["live"] is True
+
+
+def test_bet_row_place_live_during_point_even_when_not_working() -> None:
+    # A Place bet carries working=False but is exposed to the dice during the
+    # point, so its row must read live (no "(off)" marker).
+    payload = _base_payload(
+        phase="point",
+        point=4,
+        active_bets=[_bet("PlaceBet", 6, number=6, working=False)],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["active_bets"][0]["live"] is True
+
+
+def test_bet_row_place_off_on_come_out() -> None:
+    # On the come-out a non-working Place bet is genuinely off.
+    payload = _base_payload(
+        phase="come_out",
+        active_bets=[_bet("PlaceBet", 6, number=6, working=False)],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["active_bets"][0]["live"] is False
 
 
 def test_last_roll_net_signs_mixed_outcomes() -> None:
@@ -517,6 +547,27 @@ def test_place_bet_free_text_path_shows_bet() -> None:
     # "Your bets" shows the type + box number; the place-6 chip shows $6.
     assert "PlaceBet" in resp.text
     assert "$6" in resp.text
+
+
+def test_wallet_bankroll_and_net_drop_after_placing_html() -> None:
+    """Wallet model: placing a bet lowers the shown bankroll and net in the HTML board."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    resp = client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
+    assert resp.status_code == 200
+    assert "$290" in resp.text
+    assert "-$10" in resp.text
+
+
+def test_place_bet_during_point_not_marked_off_html() -> None:
+    """A place bet resting on its point is live, so the board must not label it "(off)"."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    _establish_point_html(client, sid)
+    resp = client.post(f"/game/{sid}/bet", data={"spec": "place 6", "amount": 6})
+    assert resp.status_code == 200
+    assert "PlaceBet" in resp.text
+    assert "(off)" not in resp.text
 
 
 def _placed_amounts(client: TestClient, sid: str) -> dict[int, int]:

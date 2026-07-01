@@ -110,6 +110,44 @@ def test_point_then_seven_out_pass_loses() -> None:
     assert view.running_net == Fraction(-10)
 
 
+# --- wallet/cash bankroll view ----------------------------------------------
+
+
+def test_place_bet_deducts_stake_from_wallet() -> None:
+    """Placing a bet lowers the wallet bankroll (and net) by its stake."""
+    ctrl = PlayController(ScriptedDice([]), _config())
+    ctrl.place_bet(BetSpec("pass", 10))
+    view = ctrl.snapshot()
+    assert view.bankroll == Fraction(290)
+    assert view.running_net == Fraction(-10)
+
+
+def test_wallet_and_on_table_stakes_sum_to_net_worth() -> None:
+    """The wallet identity holds: wallet + Σ stakes == net worth (unchanged by placing)."""
+    ctrl = PlayController(ScriptedDice([]), _config())
+    ctrl.place_bet(BetSpec("pass", 10))
+    ctrl.place_bet(BetSpec("place", 12, number=6))
+    view = ctrl.snapshot()
+    on_table = sum((b.amount for b in view.active_bets), Fraction(0))
+    assert view.bankroll == Fraction(278)
+    assert view.bankroll + on_table == Fraction(300)
+
+
+def test_game_over_judged_on_net_worth_not_wallet() -> None:
+    """A wallet dipping below the loss limit does NOT bust while net worth is safe.
+
+    Chips resting on the felt are still yours, so committing most of the bankroll
+    to a standing bet must not end the game even though the *wallet* figure drops
+    below ``loss_limit``.
+    """
+    ctrl = PlayController(ScriptedDice([(2, 2)]), _config(loss_limit=Fraction(50)))
+    ctrl.place_bet(BetSpec("pass", 260))
+    ctrl.roll()  # (2,2) -> point 4; pass bet stays up, net worth still 300
+    view = ctrl.snapshot()
+    assert view.bankroll == Fraction(40)  # wallet is below the $50 loss limit
+    assert view.game_over is False  # but net worth ($300) keeps the game live
+
+
 # --- game-over gates --------------------------------------------------------
 
 
@@ -393,11 +431,13 @@ def test_recent_rolls_serialized_in_to_dict() -> None:
 # --- remove bet -------------------------------------------------------------
 
 
-def test_remove_bet_ok_removes_from_view_bankroll_unchanged() -> None:
-    """Removing a placed bet succeeds, drops it from the view, and leaves bankroll."""
+def test_remove_bet_ok_removes_from_view_and_refunds_wallet() -> None:
+    """Removing a placed bet succeeds, drops it, and returns its stake to the wallet."""
     ctrl = PlayController(ScriptedDice([]), _config())
     placed = ctrl.place_bet(BetSpec("pass", 10))
-    bet_id = placed.view.active_bets[0].id
+    bet = placed.view.active_bets[0]
+    bet_id = bet.id
+    stake = bet.amount
     before = ctrl.snapshot().bankroll
 
     outcome = ctrl.remove_bet(bet_id)
@@ -406,7 +446,8 @@ def test_remove_bet_ok_removes_from_view_bankroll_unchanged() -> None:
     assert outcome.ok is True
     assert bet_id in outcome.message
     assert outcome.view.active_bets == []
-    assert outcome.view.bankroll == before
+    # Wallet model: taking the bet down returns its stake to the wallet bankroll.
+    assert outcome.view.bankroll == before + stake
 
 
 def test_remove_bet_unknown_id_rejected_no_state_change() -> None:
@@ -440,8 +481,8 @@ def test_remove_bet_refused_when_game_over() -> None:
 # --- press bet --------------------------------------------------------------
 
 
-def test_press_bet_increases_amount_by_win_delta_bankroll_unchanged() -> None:
-    """Pressing a just-won Place bet adds exactly its win delta to the amount."""
+def test_press_bet_increases_amount_by_win_delta_wallet_drops() -> None:
+    """Pressing a just-won Place bet adds its win delta and moves that cash onto the felt."""
     # Place 6 (off on come-out), establish point 4, then roll a 6 -> Place 6 wins.
     ctrl = PlayController(ScriptedDice([(2, 2), (2, 4)]), _config())
     ctrl.place_bet(BetSpec("place", 6, number=6))
@@ -463,7 +504,9 @@ def test_press_bet_increases_amount_by_win_delta_bankroll_unchanged() -> None:
     assert bet_id in outcome.message
     pressed = next(b for b in outcome.view.active_bets if b.id == bet_id)
     assert pressed.amount == amount_before + win.delta
-    assert outcome.view.bankroll == bankroll_before
+    # Wallet model: the pressed winnings move from cash onto the felt, so the
+    # wallet bankroll drops by exactly the pressed amount (net worth unchanged).
+    assert outcome.view.bankroll == bankroll_before - win.delta
 
 
 def test_press_bet_no_prior_win_rejected() -> None:

@@ -86,6 +86,23 @@ def test_new_game_is_uncapped_by_default() -> None:
     assert view["rolls_left"] is None
 
 
+def test_wallet_bankroll_reflects_placed_stake() -> None:
+    """Wallet model: placing lowers bankroll/net by the stake; removing restores it."""
+    client = _client()
+    session_id, _ = _new_game(client, seed=1, starting_bankroll=300)
+    placed = client.post(
+        f"/api/game/{session_id}/bet",
+        json={"kind": "pass", "amount": 10},
+    ).json()
+    assert placed["view"]["bankroll"]["exact"] == "290/1"
+    assert placed["view"]["running_net"]["exact"] == "-10/1"
+    bet_id = placed["view"]["active_bets"][0]["id"]
+
+    removed = client.post(f"/api/game/{session_id}/bet/{bet_id}/remove").json()
+    assert removed["view"]["bankroll"]["exact"] == "300/1"
+    assert removed["view"]["running_net"]["exact"] == "0/1"
+
+
 def test_remove_bet_drops_it_from_active_bets() -> None:
     client = _client()
     session_id, _ = _new_game(client, seed=1)

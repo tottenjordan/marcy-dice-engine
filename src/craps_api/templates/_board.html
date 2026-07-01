@@ -265,7 +265,7 @@
       #}
       <li>
         <span class="bet-label">{{ bet.type }}{% if bet.number is not none %} {{ bet.number }}{% elif bet.come_point is not none %} {{ bet.come_point }}{% endif %}
-        {{ bet.amount }}{% if not bet.working %} (off){% endif %}</span>
+        {{ bet.amount }}{% if not bet.live %} (off){% endif %}</span>
         <span class="bet-controls">
           {% if bet.can_press %}
           <button type="button" class="bet-btn bet-press"

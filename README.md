@@ -137,6 +137,13 @@ roll count.
 The board is a green-felt craps table whose zones are clickable tiles. On top of
 that it carries a set of play-mode conveniences:
 
+- **Wallet / cash bankroll** — the bankroll shown is the free cash in hand:
+  placing a bet moves its stake onto the felt and **lowers** the bankroll (and
+  Net), removing a bet returns that cash and **raises** them, and a win credits
+  the profit. At any moment `bankroll + at-risk` equals your net worth. (Only the
+  play view is wallet-based; the analyzer and Monte Carlo keep the net-worth
+  accounting. Bust is judged on net worth, so chips resting on the felt never end
+  the game.)
 - **Optimal place-bet units** — Place payouts only land in whole dollars when the
   stake is a multiple of the number's unit: Place **6 / 8** in **$6** units
   (pays 7:6), Place **5 / 9** in **$5** units (pays 7:5), Place **4 / 10** in
@@ -153,8 +160,8 @@ that it carries a set of play-mode conveniences:
   the felt stays the focal area with the stats, hint, and controls arranged in
   side panels around it; the narrow / mobile single-column layout is preserved.
 - **Uncapped play** with **press** / **remove** bet operations, a
-  **total-at-risk** badge, a **last-10 roll strip**, a **per-roll net**
-  indicator, and **odds-ratio tooltips** on the playable zones.
+  **total-at-risk** badge (every stake on the felt), a **last-10 roll strip**, a
+  **per-roll net** indicator, and **odds-ratio tooltips** on the playable zones.
 
 Refreshed captures of these states:
 
@@ -262,7 +269,8 @@ docs/notes/      session notes
 ## Roadmap
 
 - Free odds on Come / Don't Come bets
-- Free-cash bankroll model (placement deduction / affordability constraints)
+- Affordability constraints on the play-mode wallet (block a bet larger than the
+  cash in hand — placement deduction already lands in the wallet view)
 - Bankroll-trajectory charts on the existing serialization-ready return types
 - A strategy DSL for declaring betting policies
 

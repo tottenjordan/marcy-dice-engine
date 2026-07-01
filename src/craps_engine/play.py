@@ -104,7 +104,8 @@ class GameView:
 
     #: Bankroll the shooter started with.
     starting_bankroll: Fraction
-    #: Current net-worth bankroll (free cash plus working chips).
+    #: Current wallet/cash bankroll (net worth minus stakes on the felt); see
+    #: :meth:`PlayController.snapshot`.
     bankroll: Fraction
     #: Net change since the start (``bankroll - starting_bankroll``).
     running_net: Fraction
@@ -221,16 +222,41 @@ class PlayController:
         self._reason: str | None = None
 
     def snapshot(self) -> GameView:
-        """Build a :class:`GameView` from the current table/config/roll state."""
-        bankroll = self._table.bankroll
+        """Build a :class:`GameView` from the current table/config/roll state.
+
+        The view reports a **wallet/cash** bankroll, not the engine's net-worth
+        bankroll: it is the free cash a player could pick up right now, i.e. the
+        net-worth bankroll minus every stake sitting on the felt. The identity is
+
+            wallet = net_worth - sum(active bet stakes)
+            => wallet + at_risk == net_worth   (always)
+
+        so placing a bet lowers the shown bankroll (cash moves onto the felt),
+        removing one raises it (chips come back as cash), and a win raises it by
+        the profit. ``running_net`` is measured off this wallet, so both the
+        bankroll AND the net move on every place/remove -- the intuitive
+        cash-in-hand model an interactive player expects. The underlying
+        net-worth engine (:meth:`Table.settle`, the analyzer, Monte Carlo) is
+        untouched; this is purely how the interactive view is presented.
+
+        Game-over is deliberately NOT computed from this wallet figure (see
+        :meth:`_check_game_over`): chips resting on the felt are still yours, so
+        you are only bust when your NET WORTH is gone, not merely when your cash
+        is temporarily committed to bets.
+        """
+        on_table = sum(
+            (bet.amount for bet in self._table.active_bets()),
+            start=Fraction(0),
+        )
         starting = self._config.starting_bankroll
+        wallet = self._table.bankroll - on_table
         phase = self._table.state.phase
         max_rolls = self._config.max_rolls
         rolls_left = None if max_rolls is None else max_rolls - self._rolls_used
         return GameView(
             starting_bankroll=starting,
-            bankroll=bankroll,
-            running_net=bankroll - starting,
+            bankroll=wallet,
+            running_net=wallet - starting,
             phase=phase.value,
             point=self._table.state.point,
             active_bets=self._table.active_bets(),
@@ -316,11 +342,13 @@ class PlayController:
         :meth:`place_bet` -- and rejected when no live bet carries ``bet_id``.
         On success the bet is removed and a fresh snapshot returned.
 
-        Removing a bet NEVER moves the bankroll: under the net-worth accounting
-        a standing stake is already counted as net worth and was never deducted
-        from the bankroll, so taking it off cannot change the bankroll either.
-        Reuses the :class:`PlaceOutcome` shape so callers handle placement and
-        removal results identically.
+        Under the wallet/cash view (:meth:`snapshot`) removing a bet RAISES the
+        shown bankroll and net: the stake was displayed as committed to the felt,
+        so taking it off returns that cash to the wallet. (The engine's net-worth
+        bankroll is unchanged -- a standing stake was always counted as net
+        worth -- but the wallet the view reports goes up because there is one
+        fewer stake to subtract.) Reuses the :class:`PlaceOutcome` shape so
+        callers handle placement and removal results identically.
         """
         if self._game_over:
             return PlaceOutcome(
@@ -361,11 +389,12 @@ class PlayController:
         press), or when that win was already pressed this roll. On success the
         amount grows and a fresh snapshot is returned.
 
-        Pressing NEVER moves the bankroll: the winnings are already part of net
-        worth, so pressing merely moves that cash onto the felt as chips (a
-        net-worth-neutral cash->chips transfer), leaving the bankroll unchanged.
-        Reuses the :class:`PlaceOutcome` shape so callers handle it like a
-        placement result.
+        Pressing is net-worth-neutral -- the winnings were already credited at
+        settle time, and pressing just moves that cash onto the felt as chips.
+        Under the wallet/cash view (:meth:`snapshot`) that cash->chips transfer
+        LOWERS the shown bankroll (the pressed amount is now at risk) while net
+        worth stays put; ``at_risk`` rises by the same amount. Reuses the
+        :class:`PlaceOutcome` shape so callers handle it like a placement result.
 
         When ``snap_place_to_unit`` is set and the pressed bet is a Place bet, the
         grown stake is rounded to the nearest whole multiple of that number's
@@ -459,6 +488,11 @@ class PlayController:
         The MAX-ROLLS gate is skipped entirely when ``config.max_rolls is None``
         (uncapped interactive play): such a game ends only on bust or, if set, the
         win goal.
+
+        Bust is judged on NET WORTH (``self._table.bankroll``), NOT the wallet
+        figure the view shows: chips resting on the felt are still yours, so you
+        are only bust when your total position is gone, not when your cash is
+        merely committed to live bets.
         """
         bankroll = self._table.bankroll
         config = self._config
