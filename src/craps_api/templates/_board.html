@@ -296,16 +296,6 @@
       <input type="number" id="stake" name="amount" value="10" min="1">
     </label>
 
-    <form class="freetext"
-          hx-post="/game/{{ session_id }}/bet"
-          hx-target="#board"
-          hx-swap="outerHTML">
-      <label>Advanced free-text bet
-        <input type="text" name="text" placeholder="come:5, lay 4:8">
-      </label>
-      <button type="submit">Place</button>
-    </form>
-
     <form class="roll"
           hx-post="/game/{{ session_id }}/roll"
           hx-target="#board"
