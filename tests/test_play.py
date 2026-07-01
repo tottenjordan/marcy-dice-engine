@@ -314,6 +314,82 @@ def test_isinstance_gameview() -> None:
     assert isinstance(ctrl.snapshot(), GameView)
 
 
+# --- recent roll history ----------------------------------------------------
+
+
+def test_recent_rolls_empty_before_any_roll() -> None:
+    """recent_rolls is empty before the first roll."""
+    ctrl = PlayController(ScriptedDice([]), _config())
+    assert ctrl.snapshot().recent_rolls == []
+
+
+def test_recent_rolls_fewer_than_ten_newest_first() -> None:
+    """After N<10 rolls it holds exactly N entries, newest-first.
+
+    Uses distinguishable rolls (no bets down, so totals never trigger a
+    game-over gate) and asserts the first entry is the most recent roll and the
+    last entry is the oldest.
+    """
+    script = [(1, 1), (1, 2), (2, 2), (2, 3)]  # totals 2, 3, 4, 5
+    ctrl = PlayController(ScriptedDice(script), _config())
+    for _ in script:
+        ctrl.roll()
+
+    recent = ctrl.snapshot().recent_rolls
+    assert len(recent) == len(script)
+    # Newest-first: first entry is the last-rolled (2,3); last is the first (1,1).
+    assert (recent[0].die1, recent[0].die2) == (2, 3)
+    assert recent[0].total == 5
+    assert (recent[-1].die1, recent[-1].die2) == (1, 1)
+    assert recent[-1].total == 2
+    # Order is exactly the roll sequence reversed.
+    assert [(r.die1, r.die2) for r in recent] == list(reversed(script))
+
+
+def test_recent_rolls_capped_at_ten_newest_first() -> None:
+    """After 12 rolls it holds exactly the 10 most recent, newest-first."""
+    # 12 distinguishable rolls (totals 2..12, then 2 again) with no bets down.
+    script = [
+        (1, 1),  # 2
+        (1, 2),  # 3
+        (1, 3),  # 4
+        (1, 4),  # 5
+        (1, 5),  # 6
+        (1, 6),  # 7
+        (2, 6),  # 8
+        (3, 6),  # 9
+        (4, 6),  # 10
+        (5, 6),  # 11
+        (6, 6),  # 12
+        (1, 1),  # 2 (12th roll, most recent)
+    ]
+    ctrl = PlayController(ScriptedDice(script), _config())
+    for _ in script:
+        ctrl.roll()
+
+    recent = ctrl.snapshot().recent_rolls
+    assert len(recent) == 10
+    # The 10 most recent rolls (script[2:]) reversed = newest-first.
+    assert [(r.die1, r.die2) for r in recent] == list(reversed(script[-10:]))
+    assert (recent[0].die1, recent[0].die2) == (1, 1)  # newest
+    assert (recent[-1].die1, recent[-1].die2) == (1, 3)  # oldest of the kept 10
+
+
+def test_recent_rolls_serialized_in_to_dict() -> None:
+    """to_dict includes recent_rolls as a list of DiceRoll payloads, newest-first."""
+    script = [(1, 1), (2, 3)]  # totals 2, 5
+    ctrl = PlayController(ScriptedDice(script), _config())
+    for _ in script:
+        ctrl.roll()
+
+    payload = ctrl.snapshot().to_dict()
+    assert "recent_rolls" in payload
+    assert isinstance(payload["recent_rolls"], list)
+    assert all(isinstance(r, dict) for r in payload["recent_rolls"])
+    assert [r["total"] for r in payload["recent_rolls"]] == [5, 2]
+    assert payload["recent_rolls"][0] == {"die1": 2, "die2": 3, "total": 5}
+
+
 # --- data-driven coaching hints ---------------------------------------------
 
 

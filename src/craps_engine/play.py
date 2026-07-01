@@ -23,6 +23,7 @@ exactly one place.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypedDict
 
@@ -41,6 +42,9 @@ if TYPE_CHECKING:
 
 # The odds kinds that are legal only once a point is established.
 _ODDS_KINDS = frozenset({"take", "lay"})
+
+#: Max rolls retained/shown in the recent-roll history tracker.
+_RECENT_ROLLS_CAP = 10
 
 
 class GameViewPayload(TypedDict):
@@ -61,6 +65,7 @@ class GameViewPayload(TypedDict):
     active_bets: list[BetPayload]
     last_roll: DiceRollPayload | None
     last_outcomes: list[ResolutionPayload]
+    recent_rolls: list[DiceRollPayload]
     rolls_used: int
     rolls_left: int | None
     game_over: bool
@@ -110,6 +115,8 @@ class GameView:
     last_roll: DiceRoll | None
     #: The resolutions produced by the most recent roll (empty before the first).
     last_outcomes: list[Resolution]
+    #: The most recent rolls, newest-first, capped at 10 (empty before the first).
+    recent_rolls: list[DiceRoll]
     #: Number of rolls executed so far.
     rolls_used: int
     #: Rolls remaining before the max-rolls cap (``max_rolls - rolls_used``), or
@@ -139,6 +146,7 @@ class GameView:
             "active_bets": [bet.to_dict() for bet in self.active_bets],
             "last_roll": self.last_roll.to_dict() if self.last_roll else None,
             "last_outcomes": [res.to_dict() for res in self.last_outcomes],
+            "recent_rolls": [r.to_dict() for r in self.recent_rolls],
             "rolls_used": self.rolls_used,
             "rolls_left": self.rolls_left,
             "game_over": self.game_over,
@@ -202,6 +210,7 @@ class PlayController:
         self._rolls_used = 0
         self._last_roll: DiceRoll | None = None
         self._last_outcomes: list[Resolution] = []
+        self._history: deque[DiceRoll] = deque(maxlen=_RECENT_ROLLS_CAP)
         self._game_over = False
         self._reason: str | None = None
 
@@ -221,6 +230,7 @@ class PlayController:
             active_bets=self._table.active_bets(),
             last_roll=self._last_roll,
             last_outcomes=list(self._last_outcomes),
+            recent_rolls=list(reversed(self._history)),
             rolls_used=self._rolls_used,
             rolls_left=rolls_left,
             game_over=self._game_over,
@@ -311,6 +321,7 @@ class PlayController:
         settle = self._table.settle(roll)
         self._last_roll = roll
         self._last_outcomes = [res for _bet, res in settle.settled]
+        self._history.append(roll)
         self._rolls_used += 1
 
         self._check_game_over()
