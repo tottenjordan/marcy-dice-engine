@@ -22,6 +22,9 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from craps_engine.bets.base import BetPayload
     from craps_engine.money import FractionPayload
     from craps_engine.play import GameViewPayload
 
@@ -31,12 +34,22 @@ _DIE_FACES = ("", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅")
 
 
 class BetRow(TypedDict):
-    """One flattened active-bet row for the template: id, type, dollar stake, working."""
+    """One flattened active-bet row for the template.
+
+    Carries the ``id``, concrete bet ``type`` name, formatted dollar ``amount``
+    and ``working`` flag, plus the two optional numeric qualifiers a bet can
+    have: ``number`` (the box number for a Place/Odds/Lay bet) and ``come_point``
+    (the travelled come-point for a Come/Don't-Come bet). Both are ``None`` for
+    bets that lack them (e.g. a Pass Line row has both ``None``), letting the
+    "Your bets" summary say e.g. "Place 6" without re-parsing the payload.
+    """
 
     id: str
     type: str
     amount: str
     working: bool
+    number: int | None
+    come_point: int | None
 
 
 class OutcomeRow(TypedDict):
@@ -63,6 +76,12 @@ class BoardContext(TypedDict):
     phase: str
     point: int | None
     active_bets: list[BetRow]
+    #: Occupied felt zone key -> its aggregated, formatted dollar label (e.g.
+    #: ``{"place-6": "$12"}``). Stakes sharing a zone are SUMMED as exact
+    #: :class:`Fraction` before formatting, so the chip total never drifts;
+    #: unmappable bets (``_zone_key`` -> ``None``) are omitted, so a zero-bet
+    #: board yields an empty dict.
+    chip_zones: dict[str, str]
     has_last_roll: bool
     die1: int
     die2: int
@@ -124,6 +143,65 @@ def _money_body(value: Fraction) -> str:
     return f"{float(value):.2f}"
 
 
+def _numbered_zone(prefix: str, bet: Mapping[str, object]) -> str:
+    """Zone key for a box-numbered bet, e.g. ``place`` + number 6 -> ``place-6``."""
+    return f"{prefix}-{bet['number']}"
+
+
+def _come_zone(prefix: str, bet: Mapping[str, object]) -> str:
+    """Zone key for a (Don't) Come bet: the flat area while travelling, else box-N.
+
+    A ``come_point`` of ``None`` means the bet is still on the come/don't-come
+    line (``come`` / ``dontcome``); once it travels to a box it becomes
+    ``come-5`` / ``dontcome-8``.
+    """
+    come_point = bet.get("come_point")
+    return prefix if come_point is None else f"{prefix}-{come_point}"
+
+
+#: Concrete bet-class name -> a handler mapping that bet's payload to its felt
+#: zone key. Data-driven (mirroring ``craps_engine.play._HINT_RULES``) so adding
+#: a bet type is a one-line table entry, not another ``elif``. Fixed-zone line
+#: bets ignore the payload; numbered/come handlers read the extra runtime fields
+#: (``number`` / ``come_point``) that the base ``BetPayload`` does not declare.
+_ZONE_BUILDERS: dict[str, Callable[[Mapping[str, object]], str]] = {
+    "PassLine": lambda _bet: "pass",
+    "DontPass": lambda _bet: "dontpass",
+    "PlaceBet": lambda bet: _numbered_zone("place", bet),
+    "TakeOdds": lambda bet: _numbered_zone("odds", bet),
+    "LayOdds": lambda bet: _numbered_zone("lay", bet),
+    "ComeBet": lambda bet: _come_zone("come", bet),
+    "DontCome": lambda bet: _come_zone("dontcome", bet),
+}
+
+
+def _zone_key(bet: BetPayload) -> str | None:
+    """Map one serialized active bet to its felt zone key, or ``None`` if unmapped.
+
+    Dispatches on ``bet["type"]`` (the concrete bet class name) through the
+    module-level :data:`_ZONE_BUILDERS` table. Numbered bets become
+    ``place-6``/``odds-4``/``lay-10``; a Come/Don't-Come bet is the flat
+    ``come``/``dontcome`` while travelling and ``come-5``/``dontcome-8`` once it
+    has a come-point. An unknown/unexpected ``type`` returns ``None`` so such a
+    bet is defensively excluded from the chip aggregation.
+
+    The subclass-specific ``number``/``come_point`` fields are not part of the
+    base ``BetPayload`` TypedDict; the handlers read them via ``Mapping`` access
+    (indexing / ``.get``), which stays type-clean without ``type: ignore``.
+
+    Args:
+        bet: A serialized active-bet payload (``BetPayload`` plus any runtime
+            subclass fields).
+
+    Returns:
+        The felt zone key string, or ``None`` for an unrecognized bet type.
+    """
+    builder = _ZONE_BUILDERS.get(bet["type"])
+    if builder is None:
+        return None
+    return builder(bet)
+
+
 def build_board_context(
     view: GameViewPayload,
     *,
@@ -161,9 +239,23 @@ def build_board_context(
             "type": bet["type"],
             "amount": _dollars(bet["amount"]),
             "working": bet["working"],
+            "number": bet.get("number"),
+            "come_point": bet.get("come_point"),
         }
         for bet in view["active_bets"]
     ]
+    # Sum stakes per felt zone as exact Fractions BEFORE formatting, so two $6
+    # place bets read as an exact "$12" chip with no float drift; bets whose
+    # zone key is None (unrecognized type) are skipped.
+    zone_totals: dict[str, Fraction] = {}
+    for bet in view["active_bets"]:
+        key = _zone_key(bet)
+        if key is None:
+            continue
+        zone_totals[key] = zone_totals.get(key, Fraction(0)) + _fraction_from_payload(bet["amount"])
+    chip_zones: dict[str, str] = {
+        key: f"${_money_body(total)}" for key, total in zone_totals.items()
+    }
     last_outcomes: list[OutcomeRow] = [
         {
             "bet_id": res["bet_id"],
@@ -181,6 +273,7 @@ def build_board_context(
         "phase": view["phase"],
         "point": view["point"],
         "active_bets": active_bets,
+        "chip_zones": chip_zones,
         "has_last_roll": has_last_roll,
         "die1": die1,
         "die2": die2,

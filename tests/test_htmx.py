@@ -20,7 +20,7 @@ from fractions import Fraction
 from fastapi.testclient import TestClient
 
 from craps_api.app import create_app
-from craps_api.board import build_board_context
+from craps_api.board import _zone_key, build_board_context
 from craps_engine.money import serialize_fraction
 
 
@@ -140,6 +140,93 @@ def test_builder_fractional_dollars() -> None:
     payload = _base_payload(bankroll=serialize_fraction(Fraction(25, 2), as_percent=False))
     ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
     assert ctx["bankroll"] == "$12.50"
+
+
+# --- zone-key + chip-aggregation unit tests ---------------------------------
+
+
+def _bet(bet_type: str, amount: int, **extra: object) -> dict[str, object]:
+    """One active-bet payload dict shaped like an engine ``BetPayload`` + extras."""
+    row: dict[str, object] = {
+        "id": f"{bet_type}0",
+        "type": bet_type,
+        "amount": _money(amount),
+        "working": True,
+    }
+    row.update(extra)
+    return row
+
+
+def test_zone_key_fixed_line_bets() -> None:
+    assert _zone_key(_bet("PassLine", 10)) == "pass"
+    assert _zone_key(_bet("DontPass", 10)) == "dontpass"
+
+
+def test_zone_key_place_and_odds() -> None:
+    assert _zone_key(_bet("PlaceBet", 6, number=6)) == "place-6"
+    assert _zone_key(_bet("TakeOdds", 10, number=4)) == "odds-4"
+    assert _zone_key(_bet("LayOdds", 10, number=10)) == "lay-10"
+
+
+def test_zone_key_come_bets_travelling_and_established() -> None:
+    assert _zone_key(_bet("ComeBet", 10, come_point=None)) == "come"
+    assert _zone_key(_bet("ComeBet", 10, come_point=5)) == "come-5"
+    assert _zone_key(_bet("DontCome", 10, come_point=None)) == "dontcome"
+    assert _zone_key(_bet("DontCome", 10, come_point=8)) == "dontcome-8"
+
+
+def test_zone_key_unknown_type_is_none() -> None:
+    assert _zone_key(_bet("Fireworks", 10)) is None
+
+
+def test_chip_zones_aggregates_same_zone_exactly() -> None:
+    payload = _base_payload(
+        active_bets=[
+            _bet("PlaceBet", 6, number=6),
+            _bet("PlaceBet", 6, number=6),
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["chip_zones"] == {"place-6": "$12"}
+
+
+def test_chip_zones_keeps_distinct_zones_separate() -> None:
+    payload = _base_payload(
+        active_bets=[
+            _bet("PassLine", 10),
+            _bet("PlaceBet", 6, number=6),
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["chip_zones"] == {"pass": "$10", "place-6": "$6"}
+
+
+def test_chip_zones_empty_when_no_bets() -> None:
+    ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["chip_zones"] == {}
+
+
+def test_chip_zones_skips_unknown_zone() -> None:
+    payload = _base_payload(active_bets=[_bet("Fireworks", 10)])
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["chip_zones"] == {}
+
+
+def test_bet_rows_carry_number_and_come_point() -> None:
+    payload = _base_payload(
+        active_bets=[
+            _bet("PlaceBet", 6, number=6),
+            _bet("PassLine", 10),
+            _bet("ComeBet", 10, come_point=5),
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    place_row, pass_row, come_row = ctx["active_bets"]
+    assert place_row["number"] == 6
+    assert place_row["come_point"] is None
+    assert pass_row["number"] is None
+    assert pass_row["come_point"] is None
+    assert come_row["come_point"] == 5
 
 
 # --- HTML route tests -------------------------------------------------------
