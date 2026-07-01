@@ -80,7 +80,7 @@ Order P1 → P7. Deps: P4 needs P1+P3; P5 needs P1+P2+P3; P6 needs P4+P5; P7 las
 | P2 | engine — recent roll history on controller/view | ✅ Done | `a9d7927` |
 | P3 | engine — remove + press bet operations | ✅ Done | `9e67d4d` |
 | P4 | api — remove/press routes + uncapped web wiring + JSON parity | ✅ Done | `55fa8d3` |
-| P5 | board — risk total, roll-net, history, odds tips, per-bet controls | ⬜ Pending | |
+| P5 | board — risk total, roll-net, history, odds tips, per-bet controls | ✅ Done | `29bcdfa` |
 | P6 | ui — felt trackers + per-bet press/remove controls | ⬜ Pending | |
 | P7 | docs — README/CLAUDE + captured UI screenshots (absorbs T3) | ⬜ Pending | |
 
