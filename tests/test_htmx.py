@@ -21,7 +21,7 @@ from fractions import Fraction
 from fastapi.testclient import TestClient
 
 from craps_api.app import create_app
-from craps_api.board import _zone_key, build_board_context
+from craps_api.board import _DIE_FACES, _zone_key, build_board_context
 from craps_engine.money import serialize_fraction
 
 
@@ -68,6 +68,7 @@ def _base_payload(**overrides: object) -> dict[str, object]:
         "active_bets": [],
         "last_roll": None,
         "last_outcomes": [],
+        "recent_rolls": [],
         "rolls_used": 0,
         "rolls_left": 100,
         "game_over": False,
@@ -228,6 +229,174 @@ def test_bet_rows_carry_number_and_come_point() -> None:
     assert pass_row["number"] is None
     assert pass_row["come_point"] is None
     assert come_row["come_point"] == 5
+
+
+# --- risk / history / odds-tip / row-affordance unit tests ------------------
+
+
+def test_total_at_risk_sums_only_working_bets_exactly() -> None:
+    payload = _base_payload(
+        active_bets=[
+            _bet("PlaceBet", 6, number=6),
+            _bet("PlaceBet", 6, number=8),
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["total_at_risk"] == "$12"
+
+
+def test_total_at_risk_excludes_non_working_bet() -> None:
+    payload = _base_payload(
+        active_bets=[
+            _bet("PlaceBet", 6, number=6),
+            _bet("PlaceBet", 6, number=8, working=False),
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["total_at_risk"] == "$6"
+
+
+def test_total_at_risk_zero_when_no_bets() -> None:
+    ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["total_at_risk"] == "$0"
+
+
+def test_last_roll_net_signs_mixed_outcomes() -> None:
+    payload = _base_payload(
+        last_roll={"die1": 3, "die2": 4, "total": 7},
+        last_outcomes=[
+            {
+                "bet_id": "a",
+                "status": "win",
+                "delta": serialize_fraction(Fraction(7), as_percent=False),
+                "note": "",
+            },
+            {
+                "bet_id": "b",
+                "status": "lose",
+                "delta": serialize_fraction(Fraction(-5), as_percent=False),
+                "note": "",
+            },
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["last_roll_net"] == "+$2"
+
+
+def test_last_roll_net_empty_before_any_roll() -> None:
+    ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["last_roll_net"] == ""
+
+
+def test_recent_rolls_map_faces_and_preserve_order() -> None:
+    payload = _base_payload(
+        recent_rolls=[
+            {"die1": 5, "die2": 2, "total": 7},
+            {"die1": 3, "die2": 3, "total": 6},
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    chips = ctx["recent_rolls"]
+    assert len(chips) == 2
+    # Newest-first order preserved (engine already ordered it).
+    assert chips[0]["die1"] == 5
+    assert chips[0]["die2"] == 2
+    assert chips[0]["total"] == 7
+    assert chips[0]["die1_face"] == _DIE_FACES[5]
+    assert chips[0]["die2_face"] == _DIE_FACES[2]
+    assert chips[1]["total"] == 6
+
+
+def test_recent_rolls_empty_when_none() -> None:
+    ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["recent_rolls"] == []
+
+
+def test_capped_false_when_uncapped() -> None:
+    payload = _base_payload(rolls_left=None)
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["capped"] is False
+    assert ctx["rolls_left"] is None
+
+
+def test_capped_true_when_capped() -> None:
+    payload = _base_payload(rolls_left=50)
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["capped"] is True
+    assert ctx["rolls_left"] == 50
+
+
+def test_zone_odds_are_exact_static_ratios() -> None:
+    ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
+    zo = ctx["zone_odds"]
+    assert zo["pass"] == "1:1"  # noqa: S105 — felt zone key, not a secret
+    assert zo["dontpass"] == "1:1"
+    assert zo["place-6"] == "7:6"
+    assert zo["place-5"] == "7:5"
+    assert zo["place-4"] == "9:5"
+    assert zo["odds-4"] == "2:1"
+    assert zo["odds-5"] == "3:2"
+    assert zo["odds-6"] == "6:5"
+    assert zo["lay-4"] == "1:2"
+    assert zo["lay-5"] == "2:3"
+    assert zo["lay-6"] == "5:6"
+
+
+def test_can_remove_true_while_not_game_over() -> None:
+    payload = _base_payload(active_bets=[_bet("PassLine", 10)])
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["active_bets"][0]["can_remove"] is True
+
+
+def test_can_remove_false_when_game_over() -> None:
+    payload = _base_payload(
+        active_bets=[_bet("PassLine", 10)],
+        game_over=True,
+        game_over_reason="bust",
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["active_bets"][0]["can_remove"] is False
+
+
+def test_can_press_only_for_winning_bet() -> None:
+    payload = _base_payload(
+        active_bets=[
+            _bet("PlaceBet", 12, id="place0", number=6),
+            _bet("PlaceBet", 12, id="place1", number=8),
+        ],
+        last_roll={"die1": 3, "die2": 3, "total": 6},
+        last_outcomes=[
+            {
+                "bet_id": "place0",
+                "status": "win",
+                "delta": serialize_fraction(Fraction(14), as_percent=False),
+                "note": "",
+            },
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    winner, other = ctx["active_bets"]
+    assert winner["can_press"] is True
+    assert other["can_press"] is False
+
+
+def test_can_press_false_when_game_over() -> None:
+    payload = _base_payload(
+        active_bets=[_bet("PlaceBet", 12, number=6)],
+        last_roll={"die1": 3, "die2": 3, "total": 6},
+        last_outcomes=[
+            {
+                "bet_id": "PlaceBet0",
+                "status": "win",
+                "delta": serialize_fraction(Fraction(14), as_percent=False),
+                "note": "",
+            },
+        ],
+        game_over=True,
+        game_over_reason="bust",
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["active_bets"][0]["can_press"] is False
 
 
 # --- HTML route tests -------------------------------------------------------

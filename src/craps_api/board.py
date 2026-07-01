@@ -21,16 +21,82 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import TYPE_CHECKING, TypedDict
 
+from craps_engine.registry import REGISTRY, odds_ratio, place_spec
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from craps_engine.bets.base import BetPayload
-    from craps_engine.money import FractionPayload
+    from craps_engine.money import FractionPayload, RatioOdds
     from craps_engine.play import GameViewPayload
 
 # Unicode die faces (1..6) indexed by pip count, so a die value maps straight to
 # its glyph. Index 0 is unused (dice never show 0 pips).
 _DIE_FACES = ("", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅")
+
+# The box numbers a Place / Free-Odds / Lay bet can sit on. Iterated once at
+# import to build the static odds-tip table below.
+_POINT_NUMBERS: tuple[int, ...] = (4, 5, 6, 8, 9, 10)
+
+
+def _ratio_label(ratio: RatioOdds) -> str:
+    """Render a :class:`RatioOdds` as its canonical ``win:stake`` tip label (e.g. ``7:6``)."""
+    return f"{ratio.win}:{ratio.stake}"
+
+
+def _build_zone_odds() -> dict[str, str]:
+    """Precompute every felt zone's static payout-ratio tooltip label.
+
+    The payout ratio for a zone (Pass 1:1, Place 6 → 7:6, take-odds 4 → 2:1,
+    lay-odds 4 → 1:2) is FIXED craps math — it never depends on the live
+    :class:`GameViewPayload`. So it is computed ONCE at import straight from
+    :mod:`craps_engine.registry` (the single source of truth for exact odds) and
+    reused unchanged on every :func:`build_board_context` call, rather than
+    recomputed per request. Keys mirror the :data:`_ZONE_BUILDERS` zone keys so a
+    tooltip lines up with the chip zone it annotates.
+
+    Returns:
+        Zone key (``pass``/``dontpass``/``place-N``/``odds-N``/``lay-N``) -> its
+        ``win:stake`` ratio label.
+    """
+    zone_odds: dict[str, str] = {
+        "pass": _ratio_label(REGISTRY["pass_line"].payout),
+        "dontpass": _ratio_label(REGISTRY["dont_pass"].payout),
+    }
+    for number in _POINT_NUMBERS:
+        zone_odds[f"place-{number}"] = _ratio_label(place_spec(number).payout)
+        zone_odds[f"odds-{number}"] = _ratio_label(odds_ratio(take=True, number=number))
+        zone_odds[f"lay-{number}"] = _ratio_label(odds_ratio(take=False, number=number))
+    return zone_odds
+
+
+#: Static felt zone -> payout-ratio tooltip label, computed once at import from
+#: the exact registry odds. Returned as-is from every :func:`build_board_context`
+#: call because the ratios are immutable craps math, not per-view state.
+_ZONE_ODDS: dict[str, str] = _build_zone_odds()
+
+
+class RollChip(TypedDict):
+    """One entry in the recent-roll history strip.
+
+    A tiny, primitive-only projection of a
+    :class:`~craps_engine.dice.DiceRollPayload` so the felt can render a compact
+    history of the last few rolls (newest-first) as dice glyphs without touching
+    the engine's roll objects. ``die1``/``die2``/``total`` are the raw pip counts
+    and their sum; ``die1_face``/``die2_face`` are the matching Unicode glyphs
+    (via :data:`_DIE_FACES`) so the template stays a dumb renderer.
+    """
+
+    #: First die's pip count (1..6).
+    die1: int
+    #: Second die's pip count (1..6).
+    die2: int
+    #: The rolled total (``die1 + die2``), precomputed so the template needn't add.
+    total: int
+    #: First die's Unicode face glyph (``_DIE_FACES[die1]``).
+    die1_face: str
+    #: Second die's Unicode face glyph (``_DIE_FACES[die2]``).
+    die2_face: str
 
 
 class BetRow(TypedDict):
@@ -42,6 +108,11 @@ class BetRow(TypedDict):
     (the travelled come-point for a Come/Don't-Come bet). Both are ``None`` for
     bets that lack them (e.g. a Pass Line row has both ``None``), letting the
     "Your bets" summary say e.g. "Place 6" without re-parsing the payload.
+
+    ``can_remove`` / ``can_press`` are per-row affordance flags the template uses
+    to gate the take-down and press-it buttons: a bet can be removed while the
+    game is live, and pressed only right after it wins (its stake is available to
+    grow from fresh winnings). Both go ``False`` once the game is over.
     """
 
     id: str
@@ -50,6 +121,13 @@ class BetRow(TypedDict):
     working: bool
     number: int | None
     come_point: int | None
+    #: Whether a "take it down" control should be offered for this row (the game
+    #: is not over). Identical across rows on any given board.
+    can_remove: bool
+    #: Whether a "press it" control should be offered: this bet just WON on the
+    #: last roll (its id has a ``"win"`` resolution in ``last_outcomes``) and the
+    #: game is still live.
+    can_press: bool
 
 
 class OutcomeRow(TypedDict):
@@ -82,6 +160,21 @@ class BoardContext(TypedDict):
     #: unmappable bets (``_zone_key`` -> ``None``) are omitted, so a zero-bet
     #: board yields an empty dict.
     chip_zones: dict[str, str]
+    #: Static felt zone -> payout-ratio tooltip label (e.g. ``{"place-6": "7:6"}``).
+    #: The same immutable :data:`_ZONE_ODDS` table every call — the ratios are
+    #: fixed craps math, not per-view state.
+    zone_odds: dict[str, str]
+    #: Summed dollar stake of the WORKING active bets — the money currently
+    #: exposed to the dice. Summed as exact :class:`Fraction` before formatting;
+    #: non-working bets are excluded; ``"$0"`` when nothing is at risk.
+    total_at_risk: str
+    #: Signed dollar swing from the last roll (``Σ delta`` over ``last_outcomes``),
+    #: e.g. ``+$7`` / ``-$12`` / ``$0``. Empty string ``""`` before any roll (no
+    #: last roll), so the template can guard on it.
+    last_roll_net: str
+    #: The last few rolls as dice-glyph chips, newest-first (already ordered and
+    #: capped by the engine). Empty before the first roll.
+    recent_rolls: list[RollChip]
     has_last_roll: bool
     die1: int
     die2: int
@@ -93,6 +186,9 @@ class BoardContext(TypedDict):
     #: Rolls remaining before the max-rolls cap, or ``None`` when uncapped
     #: (interactive play with ``max_rolls=None``).
     rolls_left: int | None
+    #: Whether the game has a max-rolls cap (``rolls_left is not None``). Lets the
+    #: template hide the "rolls left" stat entirely for uncapped interactive play.
+    capped: bool
     game_over: bool
     game_over_reason: str | None
     odds_available: bool
@@ -124,18 +220,28 @@ def _dollars(payload: FractionPayload) -> str:
     return f"${_money_body(value)}"
 
 
-def _signed_dollars(payload: FractionPayload) -> str:
-    """Render a money payload with an explicit sign, e.g. ``+$40``, ``-$12`` or ``$0``.
+def _signed_dollars_from_fraction(value: Fraction) -> str:
+    """Render an exact :class:`Fraction` with an explicit sign, e.g. ``+$40``/``-$12``/``$0``.
 
-    Used for the running-net figure where the sign is the salient part.
-    :class:`Fraction` has no ``:+`` spec, so the sign is built by hand from the
-    magnitude (mirroring ``craps_tui.viewmodel._signed_fraction``).
+    :class:`Fraction` has no ``:+`` format spec, so the sign is built by hand from
+    the magnitude (mirroring ``craps_tui.viewmodel._signed_fraction``). Factored
+    out of :func:`_signed_dollars` so callers holding a summed raw ``Fraction``
+    (e.g. the last-roll net) format it the SAME exact way as a payload-sourced one
+    without round-tripping through a serialized payload.
     """
-    value = _fraction_from_payload(payload)
     if value == 0:
         return "$0"
     sign = "-" if value < 0 else "+"
     return f"{sign}${_money_body(abs(value))}"
+
+
+def _signed_dollars(payload: FractionPayload) -> str:
+    """Render a money payload with an explicit sign, e.g. ``+$40``, ``-$12`` or ``$0``.
+
+    Used for the running-net figure where the sign is the salient part. Delegates
+    to :func:`_signed_dollars_from_fraction` after rebuilding the exact value.
+    """
+    return _signed_dollars_from_fraction(_fraction_from_payload(payload))
 
 
 def _money_body(value: Fraction) -> str:
@@ -204,6 +310,19 @@ def _zone_key(bet: BetPayload) -> str | None:
     return builder(bet)
 
 
+def _bet_ids_with_win(view: GameViewPayload) -> set[str]:
+    """Collect the ids of bets that WON on the last roll.
+
+    Scans ``last_outcomes`` for resolutions whose ``status`` is the serialized win
+    string ``"win"`` (the lowercase enum value) and returns their ``bet_id``s.
+    Computed ONCE per board so each :class:`BetRow` decides its ``can_press`` flag
+    by a cheap set-membership test instead of re-scanning the outcomes per row.
+    A bet is pressable only right after it wins, so this set is the pressable
+    universe for this moment (the game-over gate is applied per row on top of it).
+    """
+    return {res["bet_id"] for res in view["last_outcomes"] if res["status"] == "win"}
+
+
 def build_board_context(
     view: GameViewPayload,
     *,
@@ -235,6 +354,11 @@ def build_board_context(
     die1 = last_roll["die1"] if last_roll else 0
     die2 = last_roll["die2"] if last_roll else 0
     total = last_roll["total"] if last_roll else 0
+    game_over = view["game_over"]
+    # A bet is removable while the game is live; pressable only if it just won and
+    # the game is still live. Precompute the winning-id set once for the rows.
+    can_remove = not game_over
+    winning_ids = _bet_ids_with_win(view)
     active_bets: list[BetRow] = [
         {
             "id": bet["id"],
@@ -243,8 +367,39 @@ def build_board_context(
             "working": bet["working"],
             "number": bet.get("number"),
             "come_point": bet.get("come_point"),
+            "can_remove": can_remove,
+            "can_press": not game_over and bet["id"] in winning_ids,
         }
         for bet in view["active_bets"]
+    ]
+    # Money currently exposed to the dice: sum the WORKING bets' stakes as exact
+    # Fractions before formatting so the total never drifts (``$0`` when none).
+    risk_total = sum(
+        (_fraction_from_payload(bet["amount"]) for bet in view["active_bets"] if bet["working"]),
+        Fraction(0),
+    )
+    total_at_risk = f"${_money_body(risk_total)}"
+    # Signed net swing from the last roll: Σ delta over the resolutions, summed as
+    # exact Fractions. Empty string before any roll so the template can hide it.
+    if has_last_roll:
+        net_total = sum(
+            (_fraction_from_payload(res["delta"]) for res in view["last_outcomes"]),
+            Fraction(0),
+        )
+        last_roll_net = _signed_dollars_from_fraction(net_total)
+    else:
+        last_roll_net = ""
+    # Newest-first roll chips: the engine already ordered and capped recent_rolls,
+    # so just project each raw roll into a glyph-carrying RollChip.
+    recent_rolls: list[RollChip] = [
+        {
+            "die1": roll["die1"],
+            "die2": roll["die2"],
+            "total": roll["total"],
+            "die1_face": _DIE_FACES[roll["die1"]],
+            "die2_face": _DIE_FACES[roll["die2"]],
+        }
+        for roll in view["recent_rolls"]
     ]
     # Sum stakes per felt zone as exact Fractions BEFORE formatting, so two $6
     # place bets read as an exact "$12" chip with no float drift; bets whose
@@ -276,6 +431,10 @@ def build_board_context(
         "point": view["point"],
         "active_bets": active_bets,
         "chip_zones": chip_zones,
+        "zone_odds": _ZONE_ODDS,
+        "total_at_risk": total_at_risk,
+        "last_roll_net": last_roll_net,
+        "recent_rolls": recent_rolls,
         "has_last_roll": has_last_roll,
         "die1": die1,
         "die2": die2,
@@ -285,7 +444,8 @@ def build_board_context(
         "last_outcomes": last_outcomes,
         "rolls_used": view["rolls_used"],
         "rolls_left": view["rolls_left"],
-        "game_over": view["game_over"],
+        "capped": view["rolls_left"] is not None,
+        "game_over": game_over,
         "game_over_reason": view["game_over_reason"],
         "odds_available": view["odds_available"],
         "hint": hint,
