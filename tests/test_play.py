@@ -258,6 +258,71 @@ def test_odds_available_flag_tracks_phase() -> None:
     assert ctrl.snapshot().odds_available is True
 
 
+# --- odds table rules: require a flat bet + 3-4-5x max -----------------------
+
+
+def test_take_odds_require_a_pass_line_bet() -> None:
+    """Take odds with no Pass Line bet behind them are rejected (naked odds)."""
+    ctrl = PlayController(ScriptedDice([(2, 2)]), _config())
+    ctrl.roll()  # point 4 established with NO bets down
+    outcome = ctrl.place_bet(BetSpec("take", 10, number=4))
+    assert outcome.ok is False
+    assert "Pass Line" in outcome.message
+
+
+def test_lay_odds_require_a_dont_pass_bet() -> None:
+    """Lay odds with no Don't Pass bet behind them are rejected."""
+    ctrl = PlayController(ScriptedDice([(2, 2)]), _config())
+    ctrl.roll()  # point 4, no bets
+    outcome = ctrl.place_bet(BetSpec("lay", 10, number=4))
+    assert outcome.ok is False
+    assert "Don't Pass" in outcome.message
+
+
+def test_take_odds_with_pass_line_within_max_accepted() -> None:
+    """A flat Pass Line bet backs take odds up to the 3-4-5x point maximum."""
+    ctrl = PlayController(ScriptedDice([(2, 2)]), _config())
+    ctrl.place_bet_text("pass:10")
+    ctrl.roll()  # point 4 -> 3x max = $30
+    assert ctrl.place_bet(BetSpec("take", 30, number=4)).ok is True
+
+
+def test_lay_odds_with_dont_pass_within_max_accepted() -> None:
+    """A flat Don't Pass bet backs lay odds up to the point maximum."""
+    ctrl = PlayController(ScriptedDice([(2, 2)]), _config())
+    ctrl.place_bet_text("dontpass:10")
+    ctrl.roll()  # point 4 -> 3x max = $30
+    assert ctrl.place_bet(BetSpec("lay", 30, number=4)).ok is True
+
+
+def test_take_odds_respect_3_4_5x_max_per_point() -> None:
+    """The max is 3x behind 4/10, 4x behind 5/9, 5x behind 6/8 (x the flat bet)."""
+    # (come-out roll pips -> point, max multiplier)
+    cases = [((2, 2), 4, 3), ((2, 3), 5, 4), ((3, 3), 6, 5)]
+    for roll_pips, point, mult in cases:
+        ctrl = PlayController(ScriptedDice([roll_pips]), _config())
+        ctrl.place_bet_text("pass:10")
+        ctrl.roll()
+        assert ctrl.snapshot().point == point
+        at_max = ctrl.place_bet(BetSpec("take", 10 * mult, number=point))
+        assert at_max.ok is True, f"point {point}: {mult}x should be allowed"
+        over = ctrl.place_bet(BetSpec("take", 10, number=point))  # pushes over the max
+        assert over.ok is False, f"point {point}: exceeding {mult}x should be rejected"
+        assert "max" in over.message
+
+
+def test_take_odds_accumulate_toward_the_max() -> None:
+    """Separate odds placements pool against the same 3-4-5x ceiling."""
+    ctrl = PlayController(ScriptedDice([(3, 3)]), _config())  # point 6 -> 5x
+    ctrl.place_bet_text("pass:10")  # max = $50
+    ctrl.roll()
+    assert ctrl.place_bet(BetSpec("take", 30, number=6)).ok is True
+    assert ctrl.place_bet(BetSpec("take", 20, number=6)).ok is True  # 30 + 20 == 50
+    over = ctrl.place_bet(BetSpec("take", 10, number=6))  # 60 > 50
+    assert over.ok is False
+    assert "max" in over.message
+
+
 # --- seed reproducibility ---------------------------------------------------
 
 

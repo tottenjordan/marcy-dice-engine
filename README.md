@@ -135,6 +135,11 @@ that it carries a set of play-mode conveniences:
   API still accepts any exact amount for programmatic clients.)
 - **Point ON indicator** — when a point is established, its box number gets a
   yellow ring and an "ON" puck.
+- **Free odds behind the line** — once a point is on, a Take Odds slot appears
+  behind the Pass Line (and Lay Odds behind Don't Pass) to back your flat bet at
+  zero house edge. These are true "behind the line" wagers: they require a
+  matching flat bet and are capped at the standard **3-4-5×** table max (3× behind
+  4/10, 4× behind 5/9, 5× behind 6/8) — naked or over-max odds are refused.
 - **Net percentage** — the running Net dollar figure is shown alongside a Net %
   of the starting bankroll.
 - **Wide-screen no-scroll dashboard** — on wide viewports (`min-width: 1024px`)

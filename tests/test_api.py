@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from fastapi.testclient import TestClient
 
 from craps_api.app import create_app
+from craps_engine.bets.odds import MAX_ODDS_MULTIPLIER
 
 if TYPE_CHECKING:
     from craps_engine.play import GameViewPayload
@@ -65,6 +66,29 @@ def _roll_until_place_win(
             return view
     msg = f"bet {bet_id!r} did not win within cap"
     raise AssertionError(msg)
+
+
+def test_odds_require_flat_bet_and_respect_max_over_http() -> None:
+    """Naked odds are refused; a flat bet backs them up to the 3-4-5x max."""
+    client = _client()
+    session_id, _ = _new_game(client, seed=1, starting_bankroll=300)
+    point = _establish_point(client, session_id)
+
+    # No flat bet down: odds are refused (ok=false) naming the Pass Line.
+    naked = client.post(
+        f"/api/game/{session_id}/bet",
+        json={"kind": "take", "number": point, "amount": 999},
+    ).json()
+    assert naked["ok"] is False
+    assert "Pass Line" in naked["message"]
+
+    # With a Pass Line bet, odds up to the point's max are accepted.
+    client.post(f"/api/game/{session_id}/bet", json={"kind": "pass", "amount": 10})
+    at_max = client.post(
+        f"/api/game/{session_id}/bet",
+        json={"kind": "take", "number": point, "amount": 10 * MAX_ODDS_MULTIPLIER[point]},
+    ).json()
+    assert at_max["ok"] is True
 
 
 def test_new_game_returns_session_and_come_out_view() -> None:

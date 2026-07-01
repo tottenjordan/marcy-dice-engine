@@ -29,6 +29,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, TypedDict
 
 from craps_engine.bets.base import ResolutionStatus
+from craps_engine.bets.odds import MAX_ODDS_MULTIPLIER
 from craps_engine.bets.place import PlaceBet
 from craps_engine.money import serialize_fraction
 from craps_engine.registry import snap_to_place_unit
@@ -46,8 +47,28 @@ if TYPE_CHECKING:
 # The odds kinds that are legal only once a point is established.
 _ODDS_KINDS = frozenset({"take", "lay"})
 
+#: Odds kind -> (flat backer class name, this side's odds class name, flat label
+#: for messages). A take-odds bet must be backed by a Pass Line flat, a lay-odds
+#: bet by a Don't Pass flat. Come / Don't-Come bets can't back these: an odds bet
+#: must back the CURRENT puck point, and a come-point can never equal the puck
+#: point (making the point ends the point phase), so those backers are
+#: unreachable here. Name-string matching mirrors the ``_LINE_BET_NAMES`` idiom.
+_ODDS_BACKING: dict[str, tuple[str, str, str]] = {
+    "take": ("PassLine", "TakeOdds", "Pass Line"),
+    "lay": ("DontPass", "LayOdds", "Don't Pass"),
+}
+
 #: Max rolls retained/shown in the recent-roll history tracker.
 _RECENT_ROLLS_CAP = 10
+
+
+def _dollar_str(value: Fraction) -> str:
+    """Format an exact money :class:`Fraction` as a bare dollar amount.
+
+    Whole amounts render as an int (``50``); a fractional amount falls back to a
+    float (``12.5``). Used only for the human-readable odds-rejection messages.
+    """
+    return str(value.numerator) if value.denominator == 1 else str(float(value))
 
 
 class GameViewPayload(TypedDict):
@@ -303,8 +324,11 @@ class PlayController:
     def _reject_illegal_odds(self, spec: BetSpec) -> PlaceOutcome | None:
         """Return a rejection for illegal take/lay odds, else ``None``.
 
-        Odds are legal only while a point is established, and only when they back
-        that exact point. Returns ``None`` when the odds bet is legal.
+        Odds are legal only while a point is established, only when they back that
+        exact point, and only as true "behind the line" wagers: they need a flat
+        bet behind them and may not exceed the 3-4-5x table maximum (delegated to
+        :meth:`_reject_odds_table_rules`). Returns ``None`` when the odds are
+        legal.
         """
         if self._table.state.phase is not Phase.POINT:
             return PlaceOutcome(
@@ -313,10 +337,58 @@ class PlayController:
                 view=self.snapshot(),
             )
         point = self._table.state.point
-        if spec.number != point:
+        if point is None or spec.number != point:
             return PlaceOutcome(
                 ok=False,
                 message=f"odds must back the current point ({point})",
+                view=self.snapshot(),
+            )
+        return self._reject_odds_table_rules(spec, point)
+
+    def _reject_odds_table_rules(self, spec: BetSpec, point: int) -> PlaceOutcome | None:
+        """Reject naked or over-max odds; return ``None`` when the odds are legal.
+
+        Enforces two real-casino table rules at PLACEMENT time (an odds bet's
+        ``resolve`` still settles whatever stake is down -- see the MAX-ODDS
+        POLICY note in :mod:`craps_engine.bets.odds`):
+
+        * **A flat bet is required.** Take odds must be backed by a Pass Line bet,
+          lay odds by a Don't Pass bet; without one the odds are "naked" and
+          refused.
+        * **3-4-5x maximum.** The total odds on a point may not exceed the flat
+          backing times the point's cap (3x on 4/10, 4x on 5/9, 5x on 6/8, from
+          :data:`~craps_engine.bets.odds.MAX_ODDS_MULTIPLIER`). Odds already on
+          the point pool toward that ceiling, so repeated placements/presses can't
+          slip past it.
+        """
+        flat_name, odds_name, flat_label = _ODDS_BACKING[spec.kind]
+        backing = sum(
+            (bet.amount for bet in self._table.active_bets() if type(bet).__name__ == flat_name),
+            Fraction(0),
+        )
+        if backing == 0:
+            return PlaceOutcome(
+                ok=False,
+                message=f"{spec.kind} odds require a {flat_label} bet on {point}",
+                view=self.snapshot(),
+            )
+        existing = sum(
+            (
+                bet.amount
+                for bet in self._table.active_bets()
+                if type(bet).__name__ == odds_name and getattr(bet, "number", None) == point
+            ),
+            Fraction(0),
+        )
+        mult = MAX_ODDS_MULTIPLIER[point]
+        max_odds = mult * backing
+        if existing + spec.amount > max_odds:
+            return PlaceOutcome(
+                ok=False,
+                message=(
+                    f"odds exceed the {mult}x max on {point} "
+                    f"(max ${_dollar_str(max_odds)}, ${_dollar_str(existing)} already up)"
+                ),
                 view=self.snapshot(),
             )
         return None

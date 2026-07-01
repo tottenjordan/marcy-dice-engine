@@ -33,7 +33,7 @@ src/craps_tui/      Textual UI + golden-verify (ONLY place textual/I/O live)
   viewmodel.py   pure parse/format seam over the engine
   app.py         Textual App (Analyze + Verify actions)
   __main__.py    console entry point (craps-tui)
-src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — wallet/cash bankroll (placing deducts, removing refunds; bust still on net worth), advisory place-bet units, point-ON puck, net %, wide no-scroll dashboard (ONLY place web deps + web I/O live)
+src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — wallet/cash bankroll (placing deducts, removing refunds; bust still on net worth), advisory place-bet units, free odds behind the line (require a flat bet, 3-4-5x max), point-ON puck, net %, wide no-scroll dashboard (ONLY place web deps + web I/O live)
   app.py            FastAPI factory: JSON /api routes + HTMX HTML routes
   session_store.py  in-memory session store over PlayController
   board.py          pure board-context builder for the HTML partial
@@ -68,9 +68,11 @@ on net worth (chips on the felt don't end the game); the analyzer/Monte Carlo
 keep the net-worth accounting. The felt carries betting guidance and polish:
 optimal place-bet units (Place 6/8 snap to $6 multiples, 5/9/4/10 to $5, on both
 placement and press; tooltip + tip; the JSON API still accepts any exact amount),
-a point-ON indicator (yellow ring + "ON" puck on the point's box), a Net % beside
-the Net dollar figure, and a wide-screen no-scroll dashboard layout (mobile/narrow
-layout preserved). `src/craps_api/` is the only
+free odds behind the line (Take/Lay slots that require a matching flat bet and
+cap the stake at the 3-4-5x table max), a point-ON indicator (yellow ring + "ON"
+puck on the point's box), a Net % beside the Net dollar figure, and a wide-screen
+no-scroll dashboard layout (mobile/narrow layout preserved). `src/craps_api/` is
+the only
 place web deps (FastAPI/uvicorn) and HTTP I/O live, mirroring how `craps_tui`
 isolates Textual. A root `Dockerfile` builds a deployable image
 (`uv sync --group web`, then `uv run craps-web`). Screenshots for the README are

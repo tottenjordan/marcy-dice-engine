@@ -19,14 +19,18 @@ player's odds are not working on the come-out unless they explicitly call them
 on. The exact ratios come from :func:`craps_engine.registry.odds_ratio` rather
 than being hard-coded here, so the engine has one source of truth for true odds.
 
-MAX-ODDS POLICY (deliberately NOT enforced here)
-------------------------------------------------
+MAX-ODDS POLICY (enforced at PLACEMENT, never at resolution)
+------------------------------------------------------------
 Real tables cap how much odds you may back relative to your flat bet (commonly
 "3-4-5x": 3x behind a 4/10, 4x behind a 5/9, 5x behind a 6/8). That cap is a
-TABLE-RULES concern -- a validation hook for a future portfolio / table layer --
-not a property of how an odds bet *resolves*. We surface the common multipliers
-as documentation in :data:`MAX_ODDS_MULTIPLIER` but intentionally do NOT enforce
-them at resolution time; ``resolve`` settles whatever stake was placed.
+TABLE-RULES concern, not a property of how an odds bet *resolves*: ``resolve``
+here always settles whatever stake was placed. The multipliers live in
+:data:`MAX_ODDS_MULTIPLIER`, and the interactive
+:class:`~craps_engine.play.PlayController` is the validation hook that enforces
+them (plus the "a flat bet must back the odds" rule) when a bet is PLACED -- see
+``PlayController._reject_odds_table_rules``. Keeping enforcement at placement and
+out of resolution means the static analyzer / Monte Carlo paths, which settle
+pre-built bets, are unaffected.
 """
 
 from __future__ import annotations

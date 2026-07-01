@@ -559,6 +559,19 @@ def test_wallet_bankroll_and_net_drop_after_placing_html() -> None:
     assert "-$10" in resp.text
 
 
+def test_naked_take_odds_flashed_as_refused_html() -> None:
+    """Clicking Take Odds with no Pass Line bet flashes the refusal (nothing placed)."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    point = _establish_point_html(client, sid)
+    resp = client.post(f"/game/{sid}/bet", data={"spec": f"take {point}", "amount": 10})
+    assert resp.status_code == 200
+    # "odds require" is unique to the flash (the felt's own "Pass Line" label would
+    # otherwise match), and no bet was placed.
+    assert "odds require" in resp.text
+    assert "No active bets." in resp.text
+
+
 def test_place_bet_during_point_not_marked_off_html() -> None:
     """A place bet resting on its point is live, so the board must not label it "(off)"."""
     client = _client()
