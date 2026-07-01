@@ -92,6 +92,16 @@ class NewGameRequest(BaseModel):
     loss_limit: int = 0
 
 
+class OddsWorkingRequest(BaseModel):
+    """JSON body for the odds-working toggle: whether to call the odds ON.
+
+    Defaults to ``True`` (call the odds on for the come-out); pass ``False`` to
+    turn them back off.
+    """
+
+    working: bool = True
+
+
 class BetRequest(BaseModel):
     """JSON body for placing a bet: EITHER structured fields OR free ``text``.
 
@@ -275,6 +285,21 @@ def create_app() -> FastAPI:  # noqa: C901 (a route-registration factory: each r
         """
         return _controller_or_404(store, session_id).press_bet(bet_id).to_dict()
 
+    @app.post("/api/game/{session_id}/bet/{bet_id}/odds-working", response_model=None)
+    def set_odds_working(
+        session_id: str, bet_id: str, body: OddsWorkingRequest
+    ) -> PlaceOutcomePayload:
+        """Call an odds bet ON/OFF for the come-out; a refusal is 200 with ``ok=false``.
+
+        Only an unknown SESSION is a 404 — a refusal (no live bet, or the bet is
+        not an odds bet) is handled by the controller with ``ok=false``.
+        """
+        return (
+            _controller_or_404(store, session_id)
+            .set_come_out_working(bet_id, working=body.working)
+            .to_dict()
+        )
+
     # --- HTML routes (server-rendered HTMX frontend) ------------------------
     #
     # ``GET /`` serves the new-game FORM plus an empty placeholder board (no
@@ -352,6 +377,24 @@ def create_app() -> FastAPI:  # noqa: C901 (a route-registration factory: each r
         controller = _controller_or_404(store, session_id)
         # Felt presses snap the grown Place stake to its unit, mirroring placement.
         flash = controller.press_bet(bet_id, snap_place_to_unit=True).message
+        return _render_board(
+            templates, request, session_id=session_id, view=controller.snapshot(), flash=flash
+        )
+
+    @app.post("/game/{session_id}/odds-working", response_class=HTMLResponse)
+    def set_odds_working_html(
+        request: Request,
+        session_id: str,
+        bet_id: Annotated[str, Form()],
+        working: Annotated[bool, Form()],
+    ) -> HTMLResponse:
+        """Call a come-odds bet ON/OFF for the come-out and return the board partial.
+
+        The felt toggle posts the OPPOSITE of the bet's current state, so a single
+        click flips it. A refusal (unknown or non-odds bet) is flashed, never a 500.
+        """
+        controller = _controller_or_404(store, session_id)
+        flash = controller.set_come_out_working(bet_id, working=working).message
         return _render_board(
             templates, request, session_id=session_id, view=controller.snapshot(), flash=flash
         )

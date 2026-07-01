@@ -19,11 +19,26 @@ import re
 from fractions import Fraction
 
 from fastapi.testclient import TestClient
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from craps_api.app import create_app
+from craps_api.app import _TEMPLATES_DIR, create_app
 from craps_api.board import _DIE_FACES, _zone_key, build_board_context
 from craps_engine.money import serialize_fraction
 from craps_engine.registry import odds_ratio, odds_unit, place_unit, snap_to_odds_unit
+
+
+def _render_partial(context: dict[str, object]) -> str:
+    """Render the ``_board.html`` partial directly for a hand-built context.
+
+    Lets a felt-rendering test drive the exact board state (a travelled come bet +
+    come-odds) deterministically, without rolling random dice until that state
+    happens to arise. Mirrors the app's Jinja2 autoescaping.
+    """
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+        autoescape=select_autoescape(["html"]),
+    )
+    return env.get_template("_board.html").render(**context)
 
 
 def _client() -> TestClient:
@@ -167,25 +182,35 @@ def _bet(bet_type: str, amount: int, **extra: object) -> dict[str, object]:
 
 
 def test_zone_key_fixed_line_bets() -> None:
-    assert _zone_key(_bet("PassLine", 10)) == "pass"
-    assert _zone_key(_bet("DontPass", 10)) == "dontpass"
+    assert _zone_key(_bet("PassLine", 10), point=None) == "pass"
+    assert _zone_key(_bet("DontPass", 10), point=None) == "dontpass"
 
 
-def test_zone_key_place_and_odds() -> None:
-    assert _zone_key(_bet("PlaceBet", 6, number=6)) == "place-6"
-    assert _zone_key(_bet("TakeOdds", 10, number=4)) == "odds-4"
-    assert _zone_key(_bet("LayOdds", 10, number=10)) == "lay-10"
+def test_zone_key_place_and_puck_odds() -> None:
+    assert _zone_key(_bet("PlaceBet", 6, number=6), point=6) == "place-6"
+    # Odds backing the PUCK point map to the puck take/lay slots.
+    assert _zone_key(_bet("TakeOdds", 10, number=4), point=4) == "odds-4"
+    assert _zone_key(_bet("LayOdds", 10, number=10), point=10) == "lay-10"
+
+
+def test_zone_key_come_odds_split_from_puck_odds() -> None:
+    # Odds on a come-point (≠ the puck point) get their own box-rendered zone so
+    # their chip never collides with the puck-point odds slot.
+    assert _zone_key(_bet("TakeOdds", 10, number=6), point=4) == "come-odds-6"
+    assert _zone_key(_bet("LayOdds", 10, number=6), point=4) == "come-lay-6"
+    # With no puck point (come-out) every surviving odds bet is come-odds.
+    assert _zone_key(_bet("TakeOdds", 10, number=6), point=None) == "come-odds-6"
 
 
 def test_zone_key_come_bets_travelling_and_established() -> None:
-    assert _zone_key(_bet("ComeBet", 10, come_point=None)) == "come"
-    assert _zone_key(_bet("ComeBet", 10, come_point=5)) == "come-5"
-    assert _zone_key(_bet("DontCome", 10, come_point=None)) == "dontcome"
-    assert _zone_key(_bet("DontCome", 10, come_point=8)) == "dontcome-8"
+    assert _zone_key(_bet("ComeBet", 10, come_point=None), point=None) == "come"
+    assert _zone_key(_bet("ComeBet", 10, come_point=5), point=None) == "come-5"
+    assert _zone_key(_bet("DontCome", 10, come_point=None), point=None) == "dontcome"
+    assert _zone_key(_bet("DontCome", 10, come_point=8), point=None) == "dontcome-8"
 
 
 def test_zone_key_unknown_type_is_none() -> None:
-    assert _zone_key(_bet("Fireworks", 10)) is None
+    assert _zone_key(_bet("Fireworks", 10), point=None) is None
 
 
 def test_chip_zones_aggregates_same_zone_exactly() -> None:
@@ -236,6 +261,56 @@ def test_bet_rows_carry_number_and_come_point() -> None:
     assert pass_row["number"] is None
     assert pass_row["come_point"] is None
     assert come_row["come_point"] == 5
+
+
+def test_chip_zones_split_puck_odds_from_come_odds() -> None:
+    """Puck-point odds and come-point odds land in distinct chip zones."""
+    payload = _base_payload(
+        phase="point",
+        point=4,
+        odds_available=True,
+        active_bets=[
+            _bet("TakeOdds", 10, number=4),  # backs the puck point
+            _bet("TakeOdds", 10, number=6),  # backs come-point 6
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["chip_zones"] == {"odds-4": "$10", "come-odds-6": "$10"}
+
+
+def test_bet_row_come_bet_can_add_odds_only_when_travelled() -> None:
+    """A come bet exposes '+ odds' once it has a come-point and the game is live."""
+    payload = _base_payload(
+        phase="point",
+        point=4,
+        active_bets=[
+            _bet("ComeBet", 10, come_point=6),
+            _bet("ComeBet", 10, come_point=None),
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    travelled, coming = ctx["active_bets"]
+    assert travelled["can_add_odds"] is True
+    assert coming["can_add_odds"] is False
+
+
+def test_bet_row_come_odds_expose_come_out_toggle() -> None:
+    """Come-odds (number ≠ puck) expose the come-out on/off toggle + its state."""
+    payload = _base_payload(
+        phase="point",
+        point=4,
+        odds_available=True,
+        active_bets=[
+            _bet("TakeOdds", 10, number=6, come_out_working=True),  # come odds
+            _bet("TakeOdds", 10, number=4),  # puck odds
+        ],
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    come_odds, puck_odds = ctx["active_bets"]
+    assert come_odds["can_toggle_come_out"] is True
+    assert come_odds["come_out_working"] is True
+    assert puck_odds["can_toggle_come_out"] is False
+    assert puck_odds["come_out_working"] is False
 
 
 # --- risk / history / odds-tip / row-affordance unit tests ------------------
@@ -686,6 +761,44 @@ def test_lay_odds_button_snaps_stake_to_odds_unit() -> None:
     placed = _odds_amount(client, sid, "LayOdds")
     assert placed == snap_to_odds_unit(take=False, number=point, amount=7)
     assert placed % odds_unit(take=False, number=point) == 0
+
+
+def test_odds_working_html_route_toggles_and_rerenders() -> None:
+    """The HTMX odds-working route flips the flag and returns the board partial."""
+    client = _client()
+    sid, _ = _start_game(client, seed=5, starting_bankroll=1000)
+    point = _establish_point_html(client, sid)
+    client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
+    client.post(f"/game/{sid}/bet", data={"spec": f"take {point}", "amount": 10})
+    bet_id = next(
+        b["id"]
+        for b in client.get(f"/api/game/{sid}").json()["active_bets"]
+        if b["type"] == "TakeOdds"
+    )
+
+    resp = client.post(f"/game/{sid}/odds-working", data={"bet_id": bet_id, "working": "true"})
+    assert resp.status_code == 200
+    assert 'id="board"' in resp.text  # a full board partial came back
+    bet = next(b for b in client.get(f"/api/game/{sid}").json()["active_bets"] if b["id"] == bet_id)
+    assert bet["come_out_working"] is True
+
+
+def test_felt_renders_come_odds_chip_and_controls() -> None:
+    """The felt shows a come-odds box chip + the +odds / come-out row controls."""
+    payload = _base_payload(
+        phase="point",
+        point=4,
+        odds_available=True,
+        active_bets=[
+            _bet("ComeBet", 10, come_point=6),
+            _bet("TakeOdds", 10, number=6, come_out_working=False),
+        ],
+    )
+    ctx = build_board_context(payload, session_id="s1", hint="")  # type: ignore[arg-type]
+    html = _render_partial(dict(ctx))
+    assert "chip-odds" in html  # come-odds chip rendered on the box
+    assert "+ odds" in html  # add-odds control on the travelled come row
+    assert "Come-out: OFF" in html  # come-out toggle on the come-odds row
 
 
 def test_press_snaps_grown_place_stake_to_unit() -> None:

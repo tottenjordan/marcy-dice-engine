@@ -15,6 +15,7 @@
   --felt-ink: #f8fafc;
   --chip: #dc2626;
   --chip-come: #2563eb;
+  --chip-odds: #a855f7;
   --puck: #facc15;
 }
 
@@ -255,7 +256,8 @@ button.zone:disabled { cursor: not-allowed; opacity: 0.5; }
 
 /* Chip: a small round token pinned to a zone corner. */
 .chip,
-.chip-come {
+.chip-come,
+.chip-odds {
   position: absolute;
   top: -0.5rem;
   right: -0.5rem;
@@ -271,6 +273,9 @@ button.zone:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .chip { background: var(--chip); }
 .chip-come { background: var(--chip-come); left: -0.5rem; right: auto; }
+/* Come-point free-odds chip: distinct tint, pinned to the box's bottom edge so it
+   sits clear of the place (top-right) and come (top-left) chips on the same box. */
+.chip-odds { background: var(--chip-odds); top: auto; bottom: -0.5rem; }
 
 /* Point-established box: a yellow ring + glow (only one box is ever the point). */
 .zone-point {
@@ -366,6 +371,8 @@ button.zone:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .bet-press { background: var(--win); }
 .bet-remove { background: var(--lose); }
+.bet-odds { background: var(--chip-odds); color: #fff; }
+.bet-comeout { background: var(--puck); color: #1f2937; }
 
 /* --- Wide-screen no-scroll dashboard (Phase 6, Q4) ----------------------- */
 /* Additive layer ONLY. On desktops we widen the page and turn the vertical

@@ -91,6 +91,44 @@ def test_odds_require_flat_bet_and_respect_max_over_http() -> None:
     assert at_max["ok"] is True
 
 
+def test_odds_working_route_toggles_come_out_flag() -> None:
+    """The odds-working route flips an odds bet's come_out_working flag over HTTP."""
+    client = _client()
+    session_id, _ = _new_game(client, seed=1, starting_bankroll=300)
+    point = _establish_point(client, session_id)
+    client.post(f"/api/game/{session_id}/bet", json={"kind": "pass", "amount": 10})
+    placed = client.post(
+        f"/api/game/{session_id}/bet",
+        json={"kind": "take", "number": point, "amount": 10},
+    ).json()
+    bet_id = next(b["id"] for b in placed["view"]["active_bets"] if b["type"] == "TakeOdds")
+    assert placed["view"]["active_bets"][-1]["come_out_working"] is False
+
+    on = client.post(
+        f"/api/game/{session_id}/bet/{bet_id}/odds-working",
+        json={"working": True},
+    ).json()
+    assert on["ok"] is True
+    toggled = next(b for b in on["view"]["active_bets"] if b["id"] == bet_id)
+    assert toggled["come_out_working"] is True
+
+
+def test_odds_working_route_refuses_non_odds_bet() -> None:
+    """Toggling a non-odds bet is a 200 with ok=false (engine-handled refusal)."""
+    client = _client()
+    session_id, _ = _new_game(client, seed=1, starting_bankroll=300)
+    placed = client.post(
+        f"/api/game/{session_id}/bet",
+        json={"kind": "pass", "amount": 10},
+    ).json()
+    bet_id = placed["view"]["active_bets"][-1]["id"]
+    out = client.post(
+        f"/api/game/{session_id}/bet/{bet_id}/odds-working",
+        json={"working": True},
+    ).json()
+    assert out["ok"] is False
+
+
 def test_new_game_returns_session_and_come_out_view() -> None:
     client = _client()
     session_id, view = _new_game(client, starting_bankroll=300, max_rolls=100)

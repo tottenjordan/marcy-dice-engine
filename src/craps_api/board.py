@@ -64,9 +64,14 @@ def _build_zone_odds() -> dict[str, str]:
         "dontpass": _ratio_label(REGISTRY["dont_pass"].payout),
     }
     for number in _POINT_NUMBERS:
+        take_label = _ratio_label(odds_ratio(take=True, number=number))
+        lay_label = _ratio_label(odds_ratio(take=False, number=number))
         zone_odds[f"place-{number}"] = _ratio_label(place_spec(number).payout)
-        zone_odds[f"odds-{number}"] = _ratio_label(odds_ratio(take=True, number=number))
-        zone_odds[f"lay-{number}"] = _ratio_label(odds_ratio(take=False, number=number))
+        zone_odds[f"odds-{number}"] = take_label
+        zone_odds[f"lay-{number}"] = lay_label
+        # Come-point odds pay the same true odds; they just render on the box.
+        zone_odds[f"come-odds-{number}"] = take_label
+        zone_odds[f"come-lay-{number}"] = lay_label
     return zone_odds
 
 
@@ -117,8 +122,13 @@ def _build_odds_units() -> dict[str, int]:
     """
     units: dict[str, int] = {}
     for number in _POINT_NUMBERS:
-        units[f"odds-{number}"] = odds_unit(take=True, number=number)
-        units[f"lay-{number}"] = odds_unit(take=False, number=number)
+        take_unit = odds_unit(take=True, number=number)
+        lay_unit = odds_unit(take=False, number=number)
+        units[f"odds-{number}"] = take_unit
+        units[f"lay-{number}"] = lay_unit
+        # Come-point odds share the same optimal unit as puck-point odds.
+        units[f"come-odds-{number}"] = take_unit
+        units[f"come-lay-{number}"] = lay_unit
     return units
 
 
@@ -188,6 +198,16 @@ class BetRow(TypedDict):
     #: last roll (its id has a ``"win"`` resolution in ``last_outcomes``) and the
     #: game is still live.
     can_press: bool
+    #: Whether the player has called these odds ON for the come-out. Only odds
+    #: bets carry the flag; ``False`` for every other bet type.
+    come_out_working: bool
+    #: Whether a "+ odds" control should be offered: this is a Come/Don't-Come bet
+    #: that has travelled to a come-point and the game is still live, so free odds
+    #: may be placed behind it.
+    can_add_odds: bool
+    #: Whether a come-out on/off toggle should be offered: this is a come-odds bet
+    #: (an odds bet whose number is not the puck point) and the game is still live.
+    can_toggle_come_out: bool
 
 
 class OutcomeRow(TypedDict):
@@ -346,12 +366,12 @@ def _money_body(value: Fraction) -> str:
     return f"{float(value):.2f}"
 
 
-def _numbered_zone(prefix: str, bet: Mapping[str, object]) -> str:
+def _numbered_zone(prefix: str, bet: Mapping[str, object], _point: int | None) -> str:
     """Zone key for a box-numbered bet, e.g. ``place`` + number 6 -> ``place-6``."""
     return f"{prefix}-{bet['number']}"
 
 
-def _come_zone(prefix: str, bet: Mapping[str, object]) -> str:
+def _come_zone(prefix: str, bet: Mapping[str, object], _point: int | None) -> str:
     """Zone key for a (Don't) Come bet: the flat area while travelling, else box-N.
 
     A ``come_point`` of ``None`` means the bet is still on the come/don't-come
@@ -362,31 +382,52 @@ def _come_zone(prefix: str, bet: Mapping[str, object]) -> str:
     return prefix if come_point is None else f"{prefix}-{come_point}"
 
 
+def _odds_zone(
+    puck_prefix: str, come_prefix: str, bet: Mapping[str, object], point: int | None
+) -> str:
+    """Zone key for an odds bet, split by whether it backs the puck or a come-point.
+
+    Odds whose ``number`` equals the current puck ``point`` render in the
+    puck-line take/lay slot (``odds-N`` / ``lay-N``); odds on any other number
+    are backing a travelled come-point and render on that come-point's box
+    (``come-odds-N`` / ``come-lay-N``), so a come-odds chip never collides with
+    the puck-point slot. On the come-out (``point`` is ``None``) every surviving
+    odds bet is come-odds.
+    """
+    number = bet["number"]
+    prefix = puck_prefix if number == point else come_prefix
+    return f"{prefix}-{number}"
+
+
 #: Concrete bet-class name -> a handler mapping that bet's payload to its felt
 #: zone key. Data-driven (mirroring ``craps_engine.play._HINT_RULES``) so adding
-#: a bet type is a one-line table entry, not another ``elif``. Fixed-zone line
-#: bets ignore the payload; numbered/come handlers read the extra runtime fields
-#: (``number`` / ``come_point``) that the base ``BetPayload`` does not declare.
-_ZONE_BUILDERS: dict[str, Callable[[Mapping[str, object]], str]] = {
-    "PassLine": lambda _bet: "pass",
-    "DontPass": lambda _bet: "dontpass",
-    "PlaceBet": lambda bet: _numbered_zone("place", bet),
-    "TakeOdds": lambda bet: _numbered_zone("odds", bet),
-    "LayOdds": lambda bet: _numbered_zone("lay", bet),
-    "ComeBet": lambda bet: _come_zone("come", bet),
-    "DontCome": lambda bet: _come_zone("dontcome", bet),
+#: a bet type is a one-line table entry, not another ``elif``. Every handler takes
+#: ``(bet, point)``; fixed-zone line bets ignore both, numbered/come handlers read
+#: the extra runtime fields (``number`` / ``come_point``) the base ``BetPayload``
+#: does not declare, and the odds handlers use the puck ``point`` to split
+#: puck-backed odds from come-point odds.
+_ZONE_BUILDERS: dict[str, Callable[[Mapping[str, object], int | None], str]] = {
+    "PassLine": lambda _bet, _point: "pass",
+    "DontPass": lambda _bet, _point: "dontpass",
+    "PlaceBet": lambda bet, point: _numbered_zone("place", bet, point),
+    "TakeOdds": lambda bet, point: _odds_zone("odds", "come-odds", bet, point),
+    "LayOdds": lambda bet, point: _odds_zone("lay", "come-lay", bet, point),
+    "ComeBet": lambda bet, point: _come_zone("come", bet, point),
+    "DontCome": lambda bet, point: _come_zone("dontcome", bet, point),
 }
 
 
-def _zone_key(bet: BetPayload) -> str | None:
+def _zone_key(bet: BetPayload, *, point: int | None) -> str | None:
     """Map one serialized active bet to its felt zone key, or ``None`` if unmapped.
 
     Dispatches on ``bet["type"]`` (the concrete bet class name) through the
     module-level :data:`_ZONE_BUILDERS` table. Numbered bets become
-    ``place-6``/``odds-4``/``lay-10``; a Come/Don't-Come bet is the flat
-    ``come``/``dontcome`` while travelling and ``come-5``/``dontcome-8`` once it
-    has a come-point. An unknown/unexpected ``type`` returns ``None`` so such a
-    bet is defensively excluded from the chip aggregation.
+    ``place-6``/``odds-4``/``lay-10``; odds on a come-point (≠ the puck
+    ``point``) become ``come-odds-6``/``come-lay-6`` so their box chip stays clear
+    of the puck slot; a Come/Don't-Come bet is the flat ``come``/``dontcome``
+    while travelling and ``come-5``/``dontcome-8`` once it has a come-point. An
+    unknown/unexpected ``type`` returns ``None`` so such a bet is defensively
+    excluded from the chip aggregation.
 
     The subclass-specific ``number``/``come_point`` fields are not part of the
     base ``BetPayload`` TypedDict; the handlers read them via ``Mapping`` access
@@ -395,6 +436,8 @@ def _zone_key(bet: BetPayload) -> str | None:
     Args:
         bet: A serialized active-bet payload (``BetPayload`` plus any runtime
             subclass fields).
+        point: The current puck point (or ``None`` on the come-out), used to split
+            puck-backed odds from come-point odds.
 
     Returns:
         The felt zone key string, or ``None`` for an unrecognized bet type.
@@ -402,7 +445,7 @@ def _zone_key(bet: BetPayload) -> str | None:
     builder = _ZONE_BUILDERS.get(bet["type"])
     if builder is None:
         return None
-    return builder(bet)
+    return builder(bet, point)
 
 
 def _bet_ids_with_win(view: GameViewPayload) -> set[str]:
@@ -435,6 +478,31 @@ def _bet_is_live(bet: BetPayload, *, in_point: bool) -> bool:
         ``True`` if the bet is currently live.
     """
     return bool(bet["working"]) or (bet["type"] == "PlaceBet" and in_point)
+
+
+#: Bet-class names that carry a private come-point (Come family) and the free-odds
+#: bets, named once so the row-affordance predicates read as membership tests.
+_COME_FAMILY_NAMES = frozenset({"ComeBet", "DontCome"})
+_ODDS_NAMES = frozenset({"TakeOdds", "LayOdds"})
+
+
+def _can_add_odds(bet: BetPayload, *, game_over: bool) -> bool:
+    """Whether a "+ odds" control belongs on this row.
+
+    True for a Come/Don't-Come bet that has travelled to a come-point (so odds may
+    now back it) while the game is still live. Every other bet type is False.
+    """
+    return not game_over and bet["type"] in _COME_FAMILY_NAMES and bet.get("come_point") is not None
+
+
+def _can_toggle_come_out(bet: BetPayload, *, point: int | None, game_over: bool) -> bool:
+    """Whether a come-out on/off toggle belongs on this row.
+
+    True for a come-odds bet -- an odds bet whose backed ``number`` is not the
+    puck ``point`` (pass-side odds resolve with the point and never sit through a
+    come-out) -- while the game is still live.
+    """
+    return not game_over and bet["type"] in _ODDS_NAMES and bet.get("number") != point
 
 
 def build_board_context(
@@ -474,6 +542,7 @@ def build_board_context(
     can_remove = not game_over
     winning_ids = _bet_ids_with_win(view)
     in_point = view["phase"] == "point"
+    point = view["point"]
     active_bets: list[BetRow] = [
         {
             "id": bet["id"],
@@ -485,6 +554,9 @@ def build_board_context(
             "come_point": bet.get("come_point"),
             "can_remove": can_remove,
             "can_press": not game_over and bet["id"] in winning_ids,
+            "come_out_working": bool(bet.get("come_out_working", False)),
+            "can_add_odds": _can_add_odds(bet, game_over=game_over),
+            "can_toggle_come_out": _can_toggle_come_out(bet, point=point, game_over=game_over),
         }
         for bet in view["active_bets"]
     ]
@@ -526,7 +598,7 @@ def build_board_context(
     # zone key is None (unrecognized type) are skipped.
     zone_totals: dict[str, Fraction] = {}
     for bet in view["active_bets"]:
-        key = _zone_key(bet)
+        key = _zone_key(bet, point=view["point"])
         if key is None:
             continue
         zone_totals[key] = zone_totals.get(key, Fraction(0)) + _fraction_from_payload(bet["amount"])

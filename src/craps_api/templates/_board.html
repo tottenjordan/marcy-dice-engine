@@ -135,6 +135,9 @@
         {{ chip("place-" ~ n) }}
         {{ chip("come-" ~ n, "chip-come") }}
         {{ chip("dontcome-" ~ n, "chip-come") }}
+        {# Free odds backing a come-point (≠ puck point) render on the box too. #}
+        {{ chip("come-odds-" ~ n, "chip-odds") }}
+        {{ chip("come-lay-" ~ n, "chip-odds") }}
       </button>
       {% endfor %}
     </div>
@@ -185,11 +188,9 @@
       {#
         Odds slot: rendered only when a point is on, keyed on the PUCK point.
         The lay-N / odds-N chip zones (below and behind Pass) use this same puck
-        `point`, so button-driven odds always match the rendered zone. KNOWN
-        LIMITATION: odds placed via free-text on a come-point that differs from
-        the puck point produce a `lay-{n}`/`odds-{n}` chip key with no matching
-        rendered slot, so that chip is silently not shown — come-odds on the
-        visual felt is out of scope.
+        `point`, so button-driven odds always match the rendered zone. Odds on a
+        come-point (≠ the puck point) get their own `come-odds-N`/`come-lay-N`
+        chip on the box row above, placed/toggled from the "Your bets" panel.
       #}
       {% if odds_available %}
       <button class="zone zone-lay" type="button"
@@ -262,13 +263,33 @@
       {% for bet in active_bets %}
       {#
         Each bet row gets inline HTMX controls (#2/#6): a Press button only right
-        after the bet wins (bet.can_press), and a Remove button while the game is
-        live (bet.can_remove). Both swap the whole board like every other action.
+        after the bet wins (bet.can_press), a "+ odds" button on a travelled
+        Come/Don't-Come bet (bet.can_add_odds) that backs its come-point with free
+        odds, a come-out ON/OFF toggle on a come-odds bet (bet.can_toggle_come_out),
+        and a Remove button while the game is live (bet.can_remove). All swap the
+        whole board like every other action.
       #}
       <li>
         <span class="bet-label">{{ bet.type }}{% if bet.number is not none %} {{ bet.number }}{% elif bet.come_point is not none %} {{ bet.come_point }}{% endif %}
-        {{ bet.amount }}{% if not bet.live %} (off){% endif %}</span>
+        {{ bet.amount }}{% if not bet.live %} (off){% endif %}{% if bet.can_toggle_come_out and bet.come_out_working %} (come-out ON){% endif %}</span>
         <span class="bet-controls">
+          {% if bet.can_add_odds %}
+          {# ComeBet -> take odds, DontCome -> lay odds, on its own come-point. #}
+          {% set odds_spec = ("take " if bet.type == "ComeBet" else "lay ") ~ bet.come_point %}
+          <button type="button" class="bet-btn bet-odds"
+                  aria-label="Add free odds behind this come bet"
+                  hx-post="/game/{{ session_id }}/bet"
+                  hx-vals='{"spec": "{{ odds_spec }}"}'
+                  hx-include="#stake"
+                  hx-target="#board" hx-swap="outerHTML">+ odds</button>
+          {% endif %}
+          {% if bet.can_toggle_come_out %}
+          <button type="button" class="bet-btn bet-comeout"
+                  aria-label="Toggle these odds on/off for the come-out"
+                  hx-post="/game/{{ session_id }}/odds-working"
+                  hx-vals='{"bet_id": "{{ bet.id }}", "working": "{{ "false" if bet.come_out_working else "true" }}"}'
+                  hx-target="#board" hx-swap="outerHTML">Come-out: {{ "ON" if bet.come_out_working else "OFF" }}</button>
+          {% endif %}
           {% if bet.can_press %}
           <button type="button" class="bet-btn bet-press"
                   aria-label="Press bet"
