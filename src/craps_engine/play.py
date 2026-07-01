@@ -27,6 +27,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypedDict
 
+from craps_engine.bets.base import ResolutionStatus
 from craps_engine.money import serialize_fraction
 from craps_engine.session import SessionConfig, Table
 from craps_engine.specs import BetSpec, build_bet, parse_bet_spec
@@ -210,6 +211,9 @@ class PlayController:
         self._rolls_used = 0
         self._last_roll: DiceRoll | None = None
         self._last_outcomes: list[Resolution] = []
+        #: Bet ids already pressed since the last roll; reset each roll so a
+        #: given bet's win can be pressed at most once (see :meth:`press_bet`).
+        self._pressed_this_roll: set[str] = set()
         self._history: deque[DiceRoll] = deque(maxlen=_RECENT_ROLLS_CAP)
         self._game_over = False
         self._reason: str | None = None
@@ -302,6 +306,109 @@ class PlayController:
             return PlaceOutcome(ok=False, message=str(exc), view=self.snapshot())
         return self.place_bet(spec)
 
+    def remove_bet(self, bet_id: str) -> PlaceOutcome:
+        """Take a mis-clicked bet off the table by id; NEVER raises.
+
+        Practice-friendly with no contract-bet locking: any live bet may come
+        down. Refused (``ok=False``) once the game is over -- matching
+        :meth:`place_bet` -- and rejected when no live bet carries ``bet_id``.
+        On success the bet is removed and a fresh snapshot returned.
+
+        Removing a bet NEVER moves the bankroll: under the net-worth accounting
+        a standing stake is already counted as net worth and was never deducted
+        from the bankroll, so taking it off cannot change the bankroll either.
+        Reuses the :class:`PlaceOutcome` shape so callers handle placement and
+        removal results identically.
+        """
+        if self._game_over:
+            return PlaceOutcome(
+                ok=False,
+                message=f"game over ({self._reason})",
+                view=self.snapshot(),
+            )
+
+        removed = self._table.remove_bet(bet_id)
+        if removed is None:
+            return PlaceOutcome(
+                ok=False,
+                message=f"no bet with id {bet_id!r} to remove",
+                view=self.snapshot(),
+            )
+        return PlaceOutcome(
+            ok=True,
+            message=f"removed {bet_id}",
+            view=self.snapshot(),
+        )
+
+    def press_bet(self, bet_id: str) -> PlaceOutcome:
+        """Press a bet BY ITS WINNINGS from the most recent roll; NEVER raises.
+
+        "Pressing" grows a wager using the money it just won: the bet's
+        ``amount`` is increased by the ``delta`` of that bet's WIN in the LAST
+        roll's outcomes. It is therefore valid ONLY immediately after that bet's
+        winning roll -- there must be a fresh :class:`~craps_engine.bets.base.Resolution`
+        with matching ``bet_id`` and ``WIN`` status in :attr:`_last_outcomes`.
+
+        A given bet's win may be pressed AT MOST ONCE per roll: the press
+        CONSUMES that win, so a second press before the next roll is refused
+        (repeatedly clicking a UI Press button cannot compound the stake off a
+        single win). The next roll's win re-enables pressing that bet.
+
+        Refused (``ok=False``) once the game is over, when no live bet carries
+        ``bet_id``, when that bet did not win on the last roll (nothing to
+        press), or when that win was already pressed this roll. On success the
+        amount grows and a fresh snapshot is returned.
+
+        Pressing NEVER moves the bankroll: the winnings are already part of net
+        worth, so pressing merely moves that cash onto the felt as chips (a
+        net-worth-neutral cash->chips transfer), leaving the bankroll unchanged.
+        Reuses the :class:`PlaceOutcome` shape so callers handle it like a
+        placement result.
+        """
+        if self._game_over:
+            return PlaceOutcome(
+                ok=False,
+                message=f"game over ({self._reason})",
+                view=self.snapshot(),
+            )
+
+        bet = next((b for b in self._table.active_bets() if b.id == bet_id), None)
+        if bet is None:
+            return PlaceOutcome(
+                ok=False,
+                message=f"no bet with id {bet_id!r} to press",
+                view=self.snapshot(),
+            )
+
+        win = next(
+            (
+                res
+                for res in self._last_outcomes
+                if res.bet_id == bet_id and res.status is ResolutionStatus.WIN
+            ),
+            None,
+        )
+        if win is None:
+            return PlaceOutcome(
+                ok=False,
+                message=f"bet {bet_id!r} did not win on the last roll; nothing to press",
+                view=self.snapshot(),
+            )
+        if bet_id in self._pressed_this_roll:
+            return PlaceOutcome(
+                ok=False,
+                message=f"bet {bet_id!r} already pressed this roll",
+                view=self.snapshot(),
+            )
+
+        bet.amount += win.delta
+        self._pressed_this_roll.add(bet_id)
+        return PlaceOutcome(
+            ok=True,
+            message=f"pressed {bet_id} to {bet.amount}",
+            view=self.snapshot(),
+        )
+
     def roll(self) -> RollOutcome:
         """Roll the dice, settle the table, and check the game-over gates.
 
@@ -321,6 +428,8 @@ class PlayController:
         settle = self._table.settle(roll)
         self._last_roll = roll
         self._last_outcomes = [res for _bet, res in settle.settled]
+        # A new roll re-enables pressing each bet's fresh win (empty set each roll).
+        self._pressed_this_roll = set()
         self._history.append(roll)
         self._rolls_used += 1
 

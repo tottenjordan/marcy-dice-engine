@@ -94,6 +94,47 @@ class TestTable:
         snapshot.clear()
         assert len(table.active_bets()) == 1
 
+    def test_remove_bet_drops_and_returns_matching_bet(self) -> None:
+        """remove_bet drops the matching bet, returns it, and leaves bankroll alone."""
+        table = Table(Fraction(100))
+        bet = PassLine("pass", 10)
+        table.add_bet(bet)
+
+        removed = table.remove_bet("pass")
+
+        assert removed is bet
+        assert table.active_bets() == []
+        # Removing a standing stake never moves the net-worth bankroll.
+        assert table.bankroll == Fraction(100)
+
+    def test_remove_bet_unknown_id_is_a_noop_returning_none(self) -> None:
+        """An unknown id returns None and leaves the bets and bankroll untouched."""
+        table = Table(Fraction(100))
+        bet = PassLine("pass", 10)
+        table.add_bet(bet)
+
+        removed = table.remove_bet("nope")
+
+        assert removed is None
+        assert table.active_bets() == [bet]
+        assert table.bankroll == Fraction(100)
+
+    def test_remove_bet_removes_only_the_matching_one(self) -> None:
+        """With several bets down, only the id-matching bet is removed."""
+        table = Table(Fraction(100))
+        keep_a = PassLine("a", 10)
+        drop = PassLine("b", 10)
+        keep_c = PassLine("c", 10)
+        table.add_bet(keep_a)
+        table.add_bet(drop)
+        table.add_bet(keep_c)
+
+        removed = table.remove_bet("b")
+
+        assert removed is drop
+        assert [b.id for b in table.active_bets()] == ["a", "c"]
+        assert table.bankroll == Fraction(100)
+
 
 class TestTableSettle:
     """The extracted per-roll settlement method :meth:`Table.settle`."""

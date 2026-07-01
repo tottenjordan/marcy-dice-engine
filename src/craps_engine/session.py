@@ -189,6 +189,24 @@ class Table:
         """Return a COPY of the live bets so callers cannot mutate the internals."""
         return list(self._bets)
 
+    def remove_bet(self, bet_id: str) -> Bet | None:
+        """Take the FIRST bet with ``bet_id`` off the table, returning it or None.
+
+        A practice-friendly "undo a mis-click": drops the first live bet whose
+        ``id`` matches and returns it, or returns ``None`` when no such id is on
+        the table. There is deliberately NO contract-bet locking -- any bet may
+        come down at any time.
+
+        Removing a bet NEVER moves ``bankroll``. Under the net-worth accounting
+        (see the module docstring) a standing stake is already counted as net
+        worth and was never deducted from the bankroll when it went down, so
+        taking it back off cannot change the bankroll either.
+        """
+        for index, bet in enumerate(self._bets):
+            if bet.id == bet_id:
+                return self._bets.pop(index)
+        return None
+
     def settle(self, roll: DiceRoll) -> SettleResult:
         """Resolve every live bet against the PRE-roll state, then advance the machine.
 

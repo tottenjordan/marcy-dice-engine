@@ -390,6 +390,180 @@ def test_recent_rolls_serialized_in_to_dict() -> None:
     assert payload["recent_rolls"][0] == {"die1": 2, "die2": 3, "total": 5}
 
 
+# --- remove bet -------------------------------------------------------------
+
+
+def test_remove_bet_ok_removes_from_view_bankroll_unchanged() -> None:
+    """Removing a placed bet succeeds, drops it from the view, and leaves bankroll."""
+    ctrl = PlayController(ScriptedDice([]), _config())
+    placed = ctrl.place_bet(BetSpec("pass", 10))
+    bet_id = placed.view.active_bets[0].id
+    before = ctrl.snapshot().bankroll
+
+    outcome = ctrl.remove_bet(bet_id)
+
+    assert isinstance(outcome, PlaceOutcome)
+    assert outcome.ok is True
+    assert bet_id in outcome.message
+    assert outcome.view.active_bets == []
+    assert outcome.view.bankroll == before
+
+
+def test_remove_bet_unknown_id_rejected_no_state_change() -> None:
+    """Removing an unknown id is rejected, names the id, and changes nothing."""
+    ctrl = PlayController(ScriptedDice([]), _config())
+    ctrl.place_bet(BetSpec("pass", 10))
+    before = ctrl.snapshot()
+
+    outcome = ctrl.remove_bet("bogus9")
+
+    assert outcome.ok is False
+    assert "bogus9" in outcome.message
+    assert [b.id for b in outcome.view.active_bets] == [b.id for b in before.active_bets]
+    assert outcome.view.bankroll == before.bankroll
+
+
+def test_remove_bet_refused_when_game_over() -> None:
+    """Once the game is over, remove_bet is refused like place_bet."""
+    ctrl = PlayController(ScriptedDice([(1, 2)]), _config(max_rolls=1))
+    ctrl.place_bet(BetSpec("pass", 10))
+    placed_id = ctrl.snapshot().active_bets[0].id
+    ctrl.roll()  # max_rolls=1 -> game over
+    assert ctrl.snapshot().game_over is True
+
+    outcome = ctrl.remove_bet(placed_id)
+
+    assert outcome.ok is False
+    assert "game over" in outcome.message
+
+
+# --- press bet --------------------------------------------------------------
+
+
+def test_press_bet_increases_amount_by_win_delta_bankroll_unchanged() -> None:
+    """Pressing a just-won Place bet adds exactly its win delta to the amount."""
+    # Place 6 (off on come-out), establish point 4, then roll a 6 -> Place 6 wins.
+    ctrl = PlayController(ScriptedDice([(2, 2), (2, 4)]), _config())
+    ctrl.place_bet(BetSpec("place", 6, number=6))
+    bet_id = ctrl.snapshot().active_bets[0].id
+    ctrl.roll()  # (2,2) -> point 4, place 6 no action
+    ctrl.roll()  # (2,4) -> total 6, Place 6 WINS
+
+    view = ctrl.snapshot()
+    win = next(
+        res for res in view.last_outcomes if res.bet_id == bet_id and res.status.value == "win"
+    )
+    bet = next(b for b in view.active_bets if b.id == bet_id)
+    amount_before = bet.amount
+    bankroll_before = view.bankroll
+
+    outcome = ctrl.press_bet(bet_id)
+
+    assert outcome.ok is True
+    assert bet_id in outcome.message
+    pressed = next(b for b in outcome.view.active_bets if b.id == bet_id)
+    assert pressed.amount == amount_before + win.delta
+    assert outcome.view.bankroll == bankroll_before
+
+
+def test_press_bet_no_prior_win_rejected() -> None:
+    """A freshly placed bet with no winning roll cannot be pressed."""
+    ctrl = PlayController(ScriptedDice([]), _config())
+    ctrl.place_bet(BetSpec("place", 6, number=6))
+    bet_id = ctrl.snapshot().active_bets[0].id
+
+    outcome = ctrl.press_bet(bet_id)
+
+    assert outcome.ok is False
+    assert bet_id in outcome.message
+
+
+def test_press_bet_unknown_id_rejected() -> None:
+    """Pressing an unknown id is rejected and names the id."""
+    ctrl = PlayController(ScriptedDice([]), _config())
+    ctrl.place_bet(BetSpec("place", 6, number=6))
+
+    outcome = ctrl.press_bet("ghost3")
+
+    assert outcome.ok is False
+    assert "ghost3" in outcome.message
+
+
+def test_press_bet_refused_when_game_over() -> None:
+    """Once the game is over, press_bet is refused."""
+    ctrl = PlayController(ScriptedDice([(1, 2)]), _config(max_rolls=1))
+    ctrl.place_bet(BetSpec("pass", 10))
+    placed_id = ctrl.snapshot().active_bets[0].id
+    ctrl.roll()  # game over
+    assert ctrl.snapshot().game_over is True
+
+    outcome = ctrl.press_bet(placed_id)
+
+    assert outcome.ok is False
+    assert "game over" in outcome.message
+
+
+def test_press_bet_cannot_double_press_same_win_but_next_roll_reenables() -> None:
+    """A win presses at most once per roll; a fresh win on a later roll re-enables it."""
+    # Point 4 established (2,2); Place 6 wins on (2,4); Place 6 wins AGAIN on (3,3)
+    # (a 6 keeps point 4 on, so the bet stays live for a second win).
+    ctrl = PlayController(ScriptedDice([(2, 2), (2, 4), (3, 3)]), _config())
+    ctrl.place_bet(BetSpec("place", 6, number=6))
+    bet_id = ctrl.snapshot().active_bets[0].id
+    ctrl.roll()  # (2,2) -> point 4, place 6 no action
+    ctrl.roll()  # (2,4) -> total 6, Place 6 WINS
+
+    first_win = next(
+        res
+        for res in ctrl.snapshot().last_outcomes
+        if res.bet_id == bet_id and res.status.value == "win"
+    )
+    amount_before = next(b for b in ctrl.snapshot().active_bets if b.id == bet_id).amount
+
+    ok = ctrl.press_bet(bet_id)
+    assert ok.ok is True
+    after_one = next(b for b in ok.view.active_bets if b.id == bet_id).amount
+    assert after_one == amount_before + first_win.delta
+
+    # Second press in the SAME roll is refused and does NOT compound the stake.
+    again = ctrl.press_bet(bet_id)
+    assert again.ok is False
+    assert "already pressed this roll" in again.message
+    unchanged = next(b for b in again.view.active_bets if b.id == bet_id).amount
+    assert unchanged == after_one
+
+    # A new roll into another win for the same bet re-enables pressing.
+    ctrl.roll()  # (3,3) -> total 6, Place 6 WINS again
+    second_win = next(
+        res
+        for res in ctrl.snapshot().last_outcomes
+        if res.bet_id == bet_id and res.status.value == "win"
+    )
+    before_second = next(b for b in ctrl.snapshot().active_bets if b.id == bet_id).amount
+    ok2 = ctrl.press_bet(bet_id)
+    assert ok2.ok is True
+    after_second = next(b for b in ok2.view.active_bets if b.id == bet_id).amount
+    assert after_second == before_second + second_win.delta
+
+
+def test_press_bet_non_win_status_with_nonempty_outcomes_rejected() -> None:
+    """A bet that resolved NON-WIN on the last roll cannot be pressed.
+
+    On the point-establishing (2,2) roll, ``last_outcomes`` is non-empty (the
+    Place 6 resolved NO_ACTION) but carries no WIN for the bet, so the press is
+    rejected by the WIN filter rather than by an empty-outcomes path.
+    """
+    ctrl = PlayController(ScriptedDice([(2, 2)]), _config())
+    ctrl.place_bet(BetSpec("place", 6, number=6))
+    bet_id = ctrl.snapshot().active_bets[0].id
+    ctrl.roll()  # (2,2) -> point 4; Place 6 resolves NO_ACTION, not a WIN
+
+    assert ctrl.snapshot().last_outcomes != []
+    outcome = ctrl.press_bet(bet_id)
+    assert outcome.ok is False
+    assert "did not win on the last roll" in outcome.message
+
+
 # --- data-driven coaching hints ---------------------------------------------
 
 
