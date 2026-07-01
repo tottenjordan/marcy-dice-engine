@@ -77,7 +77,7 @@ Order P1 → P7. Deps: P4 needs P1+P3; P5 needs P1+P2+P3; P6 needs P4+P5; P7 las
 | # | Item | Status | Commit |
 |---|---|---|---|
 | P1 | engine — uncapped interactive play (optional `max_rolls`) | ✅ Done | `f8130c5` |
-| P2 | engine — recent roll history on controller/view | ⬜ Pending | |
+| P2 | engine — recent roll history on controller/view | ✅ Done | `a9d7927` |
 | P3 | engine — remove + press bet operations | ⬜ Pending | |
 | P4 | api — remove/press routes + uncapped web wiring + JSON parity | ⬜ Pending | |
 | P5 | board — risk total, roll-net, history, odds tips, per-bet controls | ⬜ Pending | |
