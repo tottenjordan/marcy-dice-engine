@@ -367,6 +367,74 @@ button.zone:disabled { cursor: not-allowed; opacity: 0.5; }
 .bet-press { background: var(--win); }
 .bet-remove { background: var(--lose); }
 
+/* --- Wide-screen no-scroll dashboard (Phase 6, Q4) ----------------------- */
+/* Additive layer ONLY. On desktops we widen the page and turn the vertical
+   board stack into a two-column dashboard: the green felt is the focal cell in
+   a left/main column, with the lighter sections (stats, dice, flash, hint,
+   roll-strip, bets, controls) flowing down a right sidebar and outcomes
+   spanning full width at the bottom. Named grid-areas mean any OPTIONAL child
+   that is absent (banner/flash/roll-strip/outcomes/controls) just leaves its
+   cell empty — the layout never looks broken. The narrow/medium default rules
+   and the max-width:560px felt collapse below are untouched. */
+@media (min-width: 1024px) {
+  main {
+    max-width: 1200px;
+  }
+
+  /* New-game form goes horizontal so it doesn't eat vertical space. */
+  .new-game {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 1rem;
+  }
+  .new-game h2 {
+    flex-basis: 100%;
+    margin: 0;
+  }
+  .new-game label {
+    margin-bottom: 0;
+  }
+
+  /* The board becomes a dashboard grid: a wide felt column + a sidebar. The
+     banner spans the full width across the top; the felt anchors the left and
+     spans the sidebar's rows so it stays large and readable. The sidebar
+     stacks stats/dice/flash/hint/roll-strip/bets and ends with controls (the
+     stake input, free-text form, and the primary Roll button, which fills the
+     sidebar column width). Outcomes spans full width at the very bottom.
+     `align-items: start` keeps sidebar cards at their natural height (packed to
+     the top of each cell) instead of stretching to match the tall felt column;
+     the felt uses `align-self: start` so it keeps its intrinsic height at the
+     top of its spanned region. Absent optional children
+     (banner/flash/roll-strip/outcomes/controls) collapse their row to zero
+     height, so the layout never looks broken. */
+  .board {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    align-items: start;
+    grid-template-areas:
+      "banner   banner"
+      "felt     stats"
+      "felt     dice"
+      "felt     flash"
+      "felt     hint"
+      "felt     roll-strip"
+      "felt     bets"
+      "felt     controls"
+      "outcomes outcomes";
+  }
+
+  .board > .banner { grid-area: banner; }
+  .board > .stats { grid-area: stats; }
+  .board > .dice { grid-area: dice; }
+  .board > .flash { grid-area: flash; }
+  .board > .hint { grid-area: hint; }
+  .board > .roll-strip { grid-area: roll-strip; }
+  .board > .felt { grid-area: felt; align-self: start; }
+  .board > .bets { grid-area: bets; }
+  .board > .controls { grid-area: controls; }
+  .board > .outcomes { grid-area: outcomes; }
+}
+
 /* Narrow screens: collapse the felt to a single column. */
 @media (max-width: 560px) {
   .felt {
