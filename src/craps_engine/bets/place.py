@@ -54,19 +54,22 @@ class PlaceBetPayload(BetPayload):
     number: int
 
 
-# The box numbers a place bet may sit on. 7 and 11, and the craps numbers
-# 2/3/12, can never be placed, so binding a place bet to them is rejected
-# fail-fast (a repo convention). ``place_spec`` is the ultimate source of truth
-# for validity; this mirrors it locally so construction fails before resolution.
-_VALID_PLACE_NUMBERS = frozenset({4, 5, 6, 8, 9, 10})
+# The box numbers a place bet may sit on. Only the 7 can never be placed (it is
+# the seven-out), so binding a place bet to it is rejected fail-fast (a repo
+# convention). 2/3/11/12 ARE placeable under crapless craps; ruleset-specific
+# legality (e.g. refusing ``place 2`` in a standard game) is enforced upstream in
+# the PlayController. ``place_spec`` is the ultimate source of truth for validity;
+# this mirrors it locally so construction fails before resolution.
+_VALID_PLACE_NUMBERS = frozenset({2, 3, 4, 5, 6, 8, 9, 10, 11, 12})
 
 # The seven-out total, named for readability at its use site.
 _SEVEN = 7
 
 
 class PlaceBet(Bet):
-    """A standing wager on a single box number (4, 5, 6, 8, 9, 10).
+    """A standing wager on a single box number.
 
+    Box numbers are 4/5/6/8/9/10 in standard craps, plus 2/3/11/12 under crapless.
     Wins at PLACE odds when its ``number`` is rolled and loses its stake on a 7.
     OFF (not working) on the come-out by default -- see the module docstring for
     the come-out convention -- so it defaults to ``working=False``.
@@ -82,13 +85,13 @@ class PlaceBet(Bet):
     ) -> None:
         """Create a place bet on ``number``.
 
-        Rejects any ``number`` that is not a real box number (4,5,6,8,9,10)
-        fail-fast, then defers stake validation/normalization to :class:`Bet`.
-        Note the ``working`` default is ``False`` (OFF on the come-out), which
-        deliberately differs from the base :class:`Bet` default of ``True``.
+        Rejects the 7 (the only total that can never be a box number) fail-fast,
+        then defers stake validation/normalization to :class:`Bet`. Note the
+        ``working`` default is ``False`` (OFF on the come-out), which deliberately
+        differs from the base :class:`Bet` default of ``True``.
         """
         if number not in _VALID_PLACE_NUMBERS:
-            msg = f"cannot place {number}: valid place numbers are 4, 5, 6, 8, 9, 10"
+            msg = f"cannot place {number}: 7 is never a place number"
             raise ValueError(msg)
         super().__init__(id, amount, working=working)
         #: The box number this place bet sits on.

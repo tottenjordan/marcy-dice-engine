@@ -143,15 +143,43 @@ def test_all_place_numbers_payouts(number: int, amount: Fraction, expected: Frac
 # ---------------------------------------------------------------------------
 # Construction validation + serialization.
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("bad", [7, 11, 2, 3, 12, 1, 13])
+# Only the 7 (and impossible totals) can never be placed -- 2/3/11/12 are valid
+# crapless box numbers now.
+@pytest.mark.parametrize("bad", [7, 1, 13])
 def test_invalid_number_raises(bad: int) -> None:
     with pytest.raises(ValueError, match="place"):
         PlaceBet("p", bad, Fraction(5))
 
 
 def test_valid_numbers_construct() -> None:
-    for n in (4, 5, 6, 8, 9, 10):
+    for n in (2, 3, 4, 5, 6, 8, 9, 10, 11, 12):
         assert PlaceBet("p", n, Fraction(5)).number == n
+
+
+# ---------------------------------------------------------------------------
+# Crapless place bets on 2/3/11/12 (pay 11:2 and 11:4).
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("number", "dice", "amount", "expected"),
+    [
+        (2, DiceRoll(1, 1), Fraction(2), Fraction(11)),  # 2 * 11/2
+        (12, DiceRoll(6, 6), Fraction(2), Fraction(11)),  # 2 * 11/2
+        (3, DiceRoll(1, 2), Fraction(4), Fraction(11)),  # 4 * 11/4
+        (11, DiceRoll(5, 6), Fraction(4), Fraction(11)),  # 4 * 11/4
+    ],
+)
+def test_crapless_place_numbers_pay_true_to_ratio(
+    number: int, dice: DiceRoll, amount: Fraction, expected: Fraction
+) -> None:
+    r = PlaceBet("p", number, amount).resolve(dice, _state_point(4))
+    assert r.status is ResolutionStatus.WIN
+    assert r.delta == expected
+
+
+def test_crapless_place_two_loses_on_seven() -> None:
+    r = PlaceBet("p", 2, Fraction(2)).resolve(DiceRoll(3, 4), _state_point(4))  # 7
+    assert r.status is ResolutionStatus.LOSE
+    assert r.delta == Fraction(-2)
 
 
 def test_amount_accepts_int() -> None:

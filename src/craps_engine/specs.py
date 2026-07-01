@@ -26,12 +26,16 @@ Each spec is one bet on one line::
     take N:AMT          take odds backing point N
     lay N:AMT           lay odds backing point N
 
-``AMT`` is a positive integer (whole dollars). ``N`` is a point/box number in
-{4, 5, 6, 8, 9, 10} and is REQUIRED for ``place``/``take``/``lay`` and
-FORBIDDEN for the line/come bets. The accepted separators are: a colon ``:``
-before the amount, and (for the numbered bets) a space before the number, e.g.
-``place 6:6``. Whitespace around each token is ignored, so ``PLACE  8 : 6`` is
-also accepted.
+``AMT`` is a positive integer (whole dollars). ``N`` is a point/box number --
+any two-die total but the 7 (standard play uses 4/5/6/8/9/10; crapless craps
+also allows 2/3/11/12) -- and is REQUIRED for ``place``/``take``/``lay`` and
+FORBIDDEN for the line/come bets. The grammar itself is ruleset-agnostic: it
+accepts any non-7 number, and ruleset-specific legality (e.g. refusing
+``place 2`` in a standard game) is enforced downstream in the
+:class:`~craps_engine.play.PlayController`. The accepted separators are: a colon
+``:`` before the amount, and (for the numbered bets) a space before the number,
+e.g. ``place 6:6``. Whitespace around each token is ignored, so ``PLACE  8 : 6``
+is also accepted.
 """
 
 from __future__ import annotations
@@ -50,8 +54,11 @@ if TYPE_CHECKING:
 
     from craps_engine.bets.base import Bet
 
-# The valid craps point / box numbers a numbered bet may target.
-_VALID_NUMBERS = frozenset({4, 5, 6, 8, 9, 10})
+# The point / box numbers a numbered bet may target. Any two-die total but the 7
+# (which is never a point). Standard play uses 4/5/6/8/9/10; crapless adds
+# 2/3/11/12. The grammar stays ruleset-agnostic -- per-ruleset legality is the
+# PlayController's job.
+_VALID_NUMBERS = frozenset({2, 3, 4, 5, 6, 8, 9, 10, 11, 12})
 
 # Kinds that take a leading number (``kind N:AMT``); the rest are bare.
 _NUMBERED_KINDS = frozenset({"place", "take", "lay"})
@@ -117,10 +124,10 @@ def parse_bet_spec(spec: str) -> BetSpec:
 
     if kind in _NUMBERED_KINDS:
         if number is None:
-            msg = f"{kind!r} requires a number (one of 4,5,6,8,9,10), got {spec!r}"
+            msg = f"{kind!r} requires a point/box number (any total but 7), got {spec!r}"
             raise ValueError(msg)
         if number not in _VALID_NUMBERS:
-            msg = f"{number} is not a valid point/box number (4,5,6,8,9,10) in {spec!r}"
+            msg = f"{number} is not a valid point/box number (7 is never a point) in {spec!r}"
             raise ValueError(msg)
     elif number is not None:
         msg = f"{kind!r} does not take a number, but got {number} in {spec!r}"

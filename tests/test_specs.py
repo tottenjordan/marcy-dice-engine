@@ -54,6 +54,17 @@ def test_parse_is_case_insensitive_and_whitespace_tolerant() -> None:
     assert parse_bet_spec("  PLACE  8 : 6 ") == BetSpec(kind="place", amount=6, number=8)
 
 
+@pytest.mark.parametrize("number", [2, 3, 11, 12])
+def test_parse_accepts_crapless_place_numbers(number: int) -> None:
+    # The grammar is ruleset-agnostic: it parses the crapless box numbers; whether
+    # they are legal in a given game is the PlayController's call, not the parser's.
+    assert parse_bet_spec(f"place {number}:6") == BetSpec(kind="place", amount=6, number=number)
+
+
+def test_parse_accepts_crapless_take_number() -> None:
+    assert parse_bet_spec("take 12:5") == BetSpec(kind="take", amount=5, number=12)
+
+
 # --- parse_bet_spec: error paths -------------------------------------------
 
 

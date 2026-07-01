@@ -49,9 +49,12 @@ TOTAL_PROBABILITY: dict[int, Fraction] = {
     total: Fraction(ways, 36) for total, ways in _WAYS_BY_TOTAL.items()
 }
 
-# The numbers a shooter can establish/place. 7 and 11 are NOT point/place
-# numbers; the craps numbers 2, 3, 12 are not either.
-_VALID_PLACE_NUMBERS: frozenset[int] = frozenset({4, 5, 6, 8, 9, 10})
+# The numbers a shooter can place. In STANDARD craps only 4/5/6/8/9/10 are
+# offered, but under CRAPLESS craps every total but the 7 becomes a point, so the
+# registry carries specs for 2/3/11/12 too (additive; standard play simply never
+# offers them -- the PlayController gates placement by the active ruleset). 7 is
+# the only total that is never a place number under any variant.
+_VALID_PLACE_NUMBERS: frozenset[int] = frozenset({2, 3, 4, 5, 6, 8, 9, 10, 11, 12})
 
 
 class BetSpecPayload(TypedDict):
@@ -150,6 +153,12 @@ REGISTRY: dict[str, BetSpec] = {
 #
 # Payout ratios and edges are mirror-symmetric across the 6/8, 5/9, 4/10 pairs
 # because each pair has identical odds and dice combinatorics.
+#
+# CRAPLESS place bets on 2/3/11/12 (verified vs the Wizard of Odds crapless
+# table). These pairs are mirror-symmetric too (2<->12, 3<->11):
+#   Place 2/12 pays 11:2 (true 6:1)  -> edge 1/14 (~7.143%)
+#   Place 3/11 pays 11:4 (true 3:1)  -> edge 1/16 (6.250%)
+# Their per-roll edge works out to exactly 1/72 for all four (see below).
 _PLACE_PAYOUT: dict[int, RatioOdds] = {
     6: RatioOdds(7, 6),
     8: RatioOdds(7, 6),
@@ -157,6 +166,10 @@ _PLACE_PAYOUT: dict[int, RatioOdds] = {
     9: RatioOdds(7, 5),
     4: RatioOdds(9, 5),
     10: RatioOdds(9, 5),
+    2: RatioOdds(11, 2),  # crapless: true 6:1
+    12: RatioOdds(11, 2),  # crapless: true 6:1
+    3: RatioOdds(11, 4),  # crapless: true 3:1
+    11: RatioOdds(11, 4),  # crapless: true 3:1
 }
 
 _PLACE_EDGE: dict[int, Fraction] = {
@@ -166,6 +179,10 @@ _PLACE_EDGE: dict[int, Fraction] = {
     9: Fraction(1, 25),
     4: Fraction(1, 15),
     10: Fraction(1, 15),
+    2: Fraction(1, 14),  # crapless: (6:1 true vs 11:2 paid)
+    12: Fraction(1, 14),
+    3: Fraction(1, 16),  # crapless: (3:1 true vs 11:4 paid)
+    11: Fraction(1, 16),
 }
 
 
@@ -194,13 +211,16 @@ PLACE_SPECS: dict[int, BetSpec] = {
 
 
 def place_spec(number: int) -> BetSpec:
-    """Return the :class:`BetSpec` for a place number (4,5,6,8,9,10).
+    """Return the :class:`BetSpec` for a place number.
 
-    Raises :class:`ValueError` for any number that cannot be placed (e.g. 7,
-    11, or the craps numbers) so callers fail fast on a bad bet request.
+    Covers 4/5/6/8/9/10 (standard) plus 2/3/11/12 (crapless). Raises
+    :class:`ValueError` for the 7, the only total that is never a place number,
+    so callers fail fast on a bad bet request. (Ruleset-specific legality -- e.g.
+    refusing ``place 2`` in a standard game -- is enforced upstream in the
+    :class:`~craps_engine.play.PlayController`, not here.)
     """
     if number not in PLACE_SPECS:
-        msg = f"cannot place {number}: valid place numbers are 4, 5, 6, 8, 9, 10"
+        msg = f"cannot place {number}: 7 is never a place number"
         raise ValueError(msg)
     return PLACE_SPECS[number]
 
@@ -282,6 +302,9 @@ def snap_to_place_unit(number: int, amount: int) -> int:
 # "Lay" odds (Don't side, betting the 7 hits first) are the exact INVERSE,
 # because the Don't bettor is the favorite and must risk more to win less:
 #   4/10: 1:2   5/9: 2:3   6/8: 5:6
+#
+# CRAPLESS points 2/3/11/12 pay true odds too (zero edge), extending the same
+# P(7):P(number) rule: 2/12 -> 6:1, 3/11 -> 6:2 = 3:1.
 _TAKE_ODDS: dict[int, RatioOdds] = {
     4: RatioOdds(2, 1),
     10: RatioOdds(2, 1),
@@ -289,6 +312,10 @@ _TAKE_ODDS: dict[int, RatioOdds] = {
     9: RatioOdds(3, 2),
     6: RatioOdds(6, 5),
     8: RatioOdds(6, 5),
+    2: RatioOdds(6, 1),  # crapless: P(7):P(2) = 6:1
+    12: RatioOdds(6, 1),  # crapless: P(7):P(12) = 6:1
+    3: RatioOdds(3, 1),  # crapless: P(7):P(3) = 6:2 = 3:1
+    11: RatioOdds(3, 1),  # crapless: P(7):P(11) = 6:2 = 3:1
 }
 
 
@@ -300,7 +327,7 @@ def odds_ratio(*, take: bool, number: int) -> RatioOdds:
     4 -> 1:2). Raises :class:`ValueError` for non-point numbers.
     """
     if number not in _TAKE_ODDS:
-        msg = f"not a valid point number: {number} (valid points: 4, 5, 6, 8, 9, 10)"
+        msg = f"not a valid point number: {number} (7 is never a point)"
         raise ValueError(msg)
     take_odds = _TAKE_ODDS[number]
     if take:

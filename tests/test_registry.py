@@ -170,7 +170,8 @@ def test_place_spec_keys() -> None:
 
 
 def test_place_specs_mapping_complete() -> None:
-    assert set(PLACE_SPECS) == {4, 5, 6, 8, 9, 10}
+    # Every total but the 7 is placeable (the 2/3/11/12 entries serve crapless).
+    assert set(PLACE_SPECS) == {2, 3, 4, 5, 6, 8, 9, 10, 11, 12}
 
 
 def test_line_payouts_are_even_money() -> None:
@@ -245,10 +246,11 @@ def test_place_spec_rejects_seven_specifically() -> None:
 
 
 def test_odds_ratio_rejects_invalid_point() -> None:
+    # 7 is the only total that is never a point (crapless makes 2/3/11/12 points).
     with pytest.raises(ValueError, match="point"):
         odds_ratio(take=True, number=7)
     with pytest.raises(ValueError, match="point"):
-        odds_ratio(take=False, number=11)
+        odds_ratio(take=False, number=7)
 
 
 def test_betspec_to_dict_line_shape() -> None:
@@ -276,3 +278,69 @@ def test_betspec_is_frozen() -> None:
     assert isinstance(spec, BetSpec)
     with pytest.raises(AttributeError):
         spec.key = "mutated"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Crapless craps: 2/3/11/12 become point/place/odds numbers. All values are
+# exact Fractions verified against the Wizard of Odds crapless tables.
+# ---------------------------------------------------------------------------
+def test_crapless_take_odds_ratios() -> None:
+    # True odds P(7):P(number): 2/12 -> 6:1, 3/11 -> 6:2 = 3:1 (zero edge).
+    assert odds_ratio(take=True, number=2).as_fraction() == Fraction(6, 1)
+    assert odds_ratio(take=True, number=12).as_fraction() == Fraction(6, 1)
+    assert odds_ratio(take=True, number=3).as_fraction() == Fraction(3, 1)
+    assert odds_ratio(take=True, number=11).as_fraction() == Fraction(3, 1)
+
+
+def test_crapless_lay_odds_are_inverses() -> None:
+    for number in (2, 3, 11, 12):
+        take = odds_ratio(take=True, number=number).as_fraction()
+        lay = odds_ratio(take=False, number=number).as_fraction()
+        assert take * lay == Fraction(1)
+
+
+def test_crapless_place_payouts_exact() -> None:
+    assert place_spec(2).payout == RatioOdds(11, 2)
+    assert place_spec(12).payout == RatioOdds(11, 2)
+    assert place_spec(3).payout == RatioOdds(11, 4)
+    assert place_spec(11).payout == RatioOdds(11, 4)
+
+
+def test_crapless_place_house_edges_exact() -> None:
+    assert place_spec(2).house_edge == Fraction(1, 14)
+    assert place_spec(12).house_edge == Fraction(1, 14)
+    assert place_spec(3).house_edge == Fraction(1, 16)
+    assert place_spec(11).house_edge == Fraction(1, 16)
+
+
+def test_crapless_place_per_roll_edge_is_one_seventysecond() -> None:
+    # Per-roll edge = edge x P(resolve). 2/12: 1/14 x 7/36 = 1/72; 3/11: 1/16 x 8/36 = 1/72.
+    for number in (2, 3, 11, 12):
+        assert place_spec(number).house_edge_per_roll == Fraction(1, 72)
+
+
+def test_crapless_place_unit_from_ratio_stake_leg() -> None:
+    # Stake leg of the payout ratio: 2/12 pays 11:2 -> unit 2; 3/11 pays 11:4 -> unit 4.
+    assert place_unit(2) == 2
+    assert place_unit(12) == 2
+    assert place_unit(3) == 4
+    assert place_unit(11) == 4
+
+
+def test_crapless_take_odds_unit_is_one() -> None:
+    # 2/12 (6:1) and 3/11 (3:1) both have a $1 stake leg on the take side.
+    for number in (2, 3, 11, 12):
+        assert odds_unit(take=True, number=number) == 1
+
+
+def test_crapless_lay_odds_unit_is_win_leg_of_take() -> None:
+    # Lay is the inverse: 2/12 -> 1:6 (unit 6), 3/11 -> 1:3 (unit 3).
+    assert odds_unit(take=False, number=2) == 6
+    assert odds_unit(take=False, number=12) == 6
+    assert odds_unit(take=False, number=3) == 3
+    assert odds_unit(take=False, number=11) == 3
+
+
+def test_crapless_place_spec_keys() -> None:
+    assert place_spec(2).key == "place_2"
+    assert place_spec(11).key == "place_11"

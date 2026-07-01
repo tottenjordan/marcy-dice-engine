@@ -66,17 +66,21 @@ class OddsBetPayload(BetPayload):
     come_out_working: bool
 
 
-# The point numbers a Free Odds bet may back. 7 and 11, and the craps numbers
-# 2/3/12, are never points, so binding odds to them is rejected fail-fast.
-_VALID_POINTS = frozenset({4, 5, 6, 8, 9, 10})
+# The point numbers a Free Odds bet may back. Only the 7 is never a point, so
+# binding odds to it is rejected fail-fast. 2/3/11/12 ARE oddsable under crapless
+# craps; ruleset-specific legality is enforced upstream in the PlayController.
+_VALID_POINTS = frozenset({2, 3, 4, 5, 6, 8, 9, 10, 11, 12})
 
 # The seven, named for readability at its use sites.
 _SEVEN = 7
 
-#: Common "3-4-5x" max-odds multipliers by point number, kept as DOCUMENTATION
-#: only. The engine does NOT enforce these at resolution time -- validating a
-#: stake against the table maximum is a table-rules / portfolio concern (a future
-#: validation hook), not part of how an odds bet settles. See module docstring.
+#: Max-odds multipliers by point number, kept as DOCUMENTATION only. The engine
+#: does NOT enforce these at resolution time -- validating a stake against the
+#: table maximum is a table-rules concern (the PlayController's placement hook),
+#: not part of how an odds bet settles. The values follow a uniform "max win =
+#: 6x the flat bet" rule: the standard 3-4-5x cap (3x on 4/10 at 2:1, 4x on 5/9
+#: at 3:2, 5x on 6/8 at 6:5 all win 6x flat) extends to the crapless points so
+#: their max win matches -- 1x on 2/12 (6:1) and 2x on 3/11 (3:1).
 MAX_ODDS_MULTIPLIER: dict[int, int] = {
     4: 3,
     10: 3,
@@ -84,6 +88,10 @@ MAX_ODDS_MULTIPLIER: dict[int, int] = {
     9: 4,
     6: 5,
     8: 5,
+    2: 1,  # crapless: 1x at 6:1 wins 6x flat
+    12: 1,
+    3: 2,  # crapless: 2x at 3:1 wins 6x flat
+    11: 2,
 }
 
 
@@ -107,8 +115,8 @@ class _OddsBet(Bet):
     ) -> None:
         """Create an odds bet bound to a point ``number``.
 
-        Rejects any ``number`` that is not a real point (4,5,6,8,9,10) fail-fast,
-        then defers stake validation/normalization to :class:`Bet`.
+        Rejects the 7 (the only total that is never a point) fail-fast, then
+        defers stake validation/normalization to :class:`Bet`.
 
         ``come_out_working`` defaults to ``False`` -- the real-table default that
         odds ride OFF on the come-out. It matters only for odds backing a COME
@@ -118,7 +126,7 @@ class _OddsBet(Bet):
         odds on for the come-out by flipping this to ``True``.
         """
         if number not in _VALID_POINTS:
-            msg = f"not a valid point number: {number} (valid points: 4, 5, 6, 8, 9, 10)"
+            msg = f"not a valid point number: {number} (7 is never a point)"
             raise ValueError(msg)
         super().__init__(id, amount, working=working)
         #: The point number this odds bet is backing.

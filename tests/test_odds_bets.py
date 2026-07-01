@@ -18,14 +18,22 @@ from fractions import Fraction
 import pytest
 
 from craps_engine.bets.base import ResolutionStatus
-from craps_engine.bets.odds import LayOdds, TakeOdds
+from craps_engine.bets.odds import MAX_ODDS_MULTIPLIER, LayOdds, TakeOdds
 from craps_engine.dice import DiceRoll
+from craps_engine.ruleset import CRAPLESS
 from craps_engine.state import GameState
 
 
 def _state_point(p: int) -> GameState:
     """Build a GameState already on POINT with point ``p``."""
     s = GameState()
+    s.apply(p)
+    return s
+
+
+def _crapless_point(p: int) -> GameState:
+    """Build a CRAPLESS GameState already on POINT with point ``p`` (2/3/11/12)."""
+    s = GameState(CRAPLESS)
     s.apply(p)
     return s
 
@@ -175,7 +183,9 @@ def test_lay_odds_non_resolving_no_action() -> None:
 # ---------------------------------------------------------------------------
 # Construction validation + serialization.
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("bad", [7, 11, 2, 3, 12, 1, 13])
+# Only the 7 (and impossible totals) can never be a point -- 2/3/11/12 are valid
+# crapless points now.
+@pytest.mark.parametrize("bad", [7, 1, 13])
 def test_invalid_number_raises(bad: int) -> None:
     with pytest.raises(ValueError, match="point"):
         TakeOdds("t", bad, Fraction(5))
@@ -184,9 +194,44 @@ def test_invalid_number_raises(bad: int) -> None:
 
 
 def test_valid_numbers_construct() -> None:
-    for n in (4, 5, 6, 8, 9, 10):
+    for n in (2, 3, 4, 5, 6, 8, 9, 10, 11, 12):
         assert TakeOdds("t", n, Fraction(5)).number == n
         assert LayOdds("l", n, Fraction(5)).number == n
+
+
+# ---------------------------------------------------------------------------
+# Crapless free odds on 2/3/11/12 (take pays 6:1 / 3:1, lay the inverse).
+# ---------------------------------------------------------------------------
+def test_crapless_take_odds_two_pays_true_6to1() -> None:
+    r = TakeOdds("t", 2, Fraction(1)).resolve(DiceRoll(1, 1), _crapless_point(2))  # 2
+    assert r.status is ResolutionStatus.WIN
+    assert r.delta == Fraction(6)  # 1 * 6/1
+
+
+def test_crapless_take_odds_three_pays_true_3to1() -> None:
+    r = TakeOdds("t", 3, Fraction(1)).resolve(DiceRoll(1, 2), _crapless_point(3))  # 3
+    assert r.status is ResolutionStatus.WIN
+    assert r.delta == Fraction(3)  # 1 * 3/1
+
+
+def test_crapless_take_odds_twelve_loses_on_seven() -> None:
+    r = TakeOdds("t", 12, Fraction(1)).resolve(DiceRoll(3, 4), _crapless_point(12))  # 7
+    assert r.status is ResolutionStatus.LOSE
+    assert r.delta == Fraction(-1)
+
+
+def test_crapless_lay_odds_two_pays_inverse_1to6() -> None:
+    r = LayOdds("l", 2, Fraction(6)).resolve(DiceRoll(3, 4), _crapless_point(2))  # 7
+    assert r.status is ResolutionStatus.WIN
+    assert r.delta == Fraction(1)  # 6 * 1/6
+
+
+def test_crapless_max_odds_multipliers_present() -> None:
+    # Uniform "max win = 6x flat": 2/12 -> 1x (6:1), 3/11 -> 2x (3:1).
+    assert MAX_ODDS_MULTIPLIER[2] == 1
+    assert MAX_ODDS_MULTIPLIER[12] == 1
+    assert MAX_ODDS_MULTIPLIER[3] == 2
+    assert MAX_ODDS_MULTIPLIER[11] == 2
 
 
 def test_to_dict_includes_number() -> None:
