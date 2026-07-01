@@ -32,7 +32,7 @@ venv, so the project's ``src/`` is prepended to ``sys.path`` and the app's own
 runtime deps (uvicorn/fastapi/jinja2/python-multipart) ride along in the inline
 dependency block above.
 
-The four captured states (each is a locator screenshot of the ``#board``
+The five captured states (each is a locator screenshot of the ``#board``
 element, so the full board is captured even when it is taller than the viewport):
 
 1. ``felt-comeout.png``  — a fresh game (empty felt, come-out phase).
@@ -42,6 +42,13 @@ element, so the full board is captured even when it is taller than the viewport)
    last-10 roll strip + Net %).
 4. ``felt-odds.png``     — with a point ON: the yellow point ring + "ON" puck on
    the point's box AND the Take/Lay free-odds zones all visible.
+5. ``felt-comeodds.png`` — a Come bet travelled to its come-point with free odds
+   behind it: the come-odds chip on the come-point's box PLUS the ``+ odds`` and
+   ``Come-out: OFF`` row controls (a SECOND game on its own fixed seed).
+
+Captures 1-4 share one game on ``_SEED``; capture 5 starts a fresh game on
+``_COMEODDS_SEED`` (whose first two rolls deterministically set a point and then
+travel a Come bet to a different come-point without a seven-out).
 
 The viewport is intentionally WIDE (>= 1024px) so the Phase-6 no-scroll
 dashboard layout (``@media (min-width: 1024px)`` in ``static/style.css``) is the
@@ -73,6 +80,10 @@ from craps_api.app import create_app  # noqa: E402
 _HOST = "127.0.0.1"
 _PORT = 8099
 _SEED = 4
+# Seed 7's first rolls are 5, 10, ...: roll 1 sets point 5, then a Come bet placed
+# after it travels to come-point 10 on roll 2 (no seven-out), so the come-odds
+# capture is byte-for-byte reproducible.
+_COMEODDS_SEED = 7
 _STARTING_BANKROLL = 1000
 _BASE_URL = f"http://{_HOST}:{_PORT}"
 # Wide viewport (>= 1024px) so the Phase-6 no-scroll dashboard media query is the
@@ -113,10 +124,10 @@ def _wait_until_up(timeout_s: float = 15.0) -> None:
     raise RuntimeError(msg)
 
 
-def _start_game(page: Page) -> None:
-    """Fill and submit the new-game form with the fixed seed + stake."""
+def _start_game(page: Page, *, seed: int = _SEED) -> None:
+    """Fill and submit the new-game form with a fixed ``seed`` + stake."""
     page.goto(_BASE_URL, wait_until="networkidle")
-    page.fill('input[name="seed"]', str(_SEED))
+    page.fill('input[name="seed"]', str(seed))
     page.fill('input[name="starting_bankroll"]', str(_STARTING_BANKROLL))
     page.click('form.new-game button[type="submit"]')
     page.wait_for_selector("#board .felt", state="visible")
@@ -179,7 +190,34 @@ def _capture(page: Page) -> list[Path]:
     page.wait_for_timeout(_SWAP_SETTLE_MS)
     written.append(_shot(page, "felt-odds.png"))
 
+    # 5. Come-odds: a SECOND game. Establish a point, drop a Come bet, roll it to a
+    #    different come-point, then back it with free odds so the come-odds chip
+    #    lands on that box and the "+ odds" / "Come-out: OFF" row controls render.
+    written.append(_capture_come_odds(page))
+
     return written
+
+
+def _capture_come_odds(page: Page) -> Path:
+    """Drive a fresh game to a Come bet + come-odds and screenshot it."""
+    _start_game(page, seed=_COMEODDS_SEED)
+    _roll(page)  # roll 1 = 5 -> point 5 established
+    _place_zone(page, "come")  # a Come bet (still coming)
+    _roll(page)  # roll 2 = 10 -> the Come bet travels to come-point 10 (puck stays 5)
+
+    # The travelled Come row now offers "+ odds" (posts a take-odds spec on 10).
+    add_odds = page.locator('button.bet-odds[hx-vals*=\'"spec": "take 10"\']')
+    if add_odds.count() == 0:
+        msg = "come bet did not travel to 10 — the come-odds '+ odds' control is missing"
+        raise RuntimeError(msg)
+    add_odds.first.click()
+    page.wait_for_timeout(_SWAP_SETTLE_MS)
+
+    # Sanity-check the come-odds chip + come-out toggle actually rendered.
+    if page.locator(".chip-odds").count() == 0 or page.locator("button.bet-comeout").count() == 0:
+        msg = "come-odds chip or come-out toggle missing — felt-comeodds would be wrong"
+        raise RuntimeError(msg)
+    return _shot(page, "felt-comeodds.png")
 
 
 def main() -> None:

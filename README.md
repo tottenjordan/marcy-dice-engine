@@ -184,9 +184,16 @@ committed stakes on the felt, waiting on the point.*
 ![Point ON — yellow ring and ON puck plus the Take/Lay odds zones](docs/images/felt-odds.png)
 *Point ON: the yellow ring + "ON" puck on the point's box, with the Take/Lay free-odds zones available.*
 
+![Come bet backed with free odds — come-odds chip on the come-point box plus the row controls](docs/images/felt-comeodds.png)
+*Come odds: a Come bet has travelled to box 10 (blue chip) and is backed with free
+odds (purple chip on the same box). Its row shows a **+ odds** control and a
+**Come-out: OFF** toggle — come-odds ride off on the come-out by default until you
+call them on. Net `-$20` is again just the `$20` committed (the `$10` come bet +
+`$10` odds), not a loss.*
+
 ### Regenerating the screenshots
 
-The four screenshots above are produced by `docs/capture_screenshots.py`, a
+The five screenshots above are produced by `docs/capture_screenshots.py`, a
 PEP 723 standalone script that boots the app on a fixed port and drives the HTMX
 flows headless with Chromium at a fixed seed for reproducibility. Playwright is a
 **script-only inline dependency** of that file — it is deliberately **not** a
