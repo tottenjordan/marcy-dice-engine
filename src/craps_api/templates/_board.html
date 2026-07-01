@@ -28,7 +28,7 @@
     </div>
     <div class="stat">
       <span class="label">Net</span>
-      <span class="value">{{ running_net }}</span>
+      <span class="value">{{ running_net }}{% if net_pct %} <small class="net-pct {{ 'net-pct-win' if net_pct.startswith('+') else 'net-pct-lose' if net_pct.startswith('-') else '' }}">({{ net_pct }})</small>{% endif %}</span>
     </div>
     <div class="stat">
       <span class="label">Phase</span>
@@ -107,24 +107,36 @@
     {%- if zone_odds.get(key) -%}aria-label="{{ label }} — pays {{ zone_odds[key] }}" title="Pays {{ zone_odds[key] }}"{%- else -%}aria-label="{{ label }}"{%- endif -%}
   {% endmacro %}
 
+  {#
+    Place-zone variant of pays(): folds the advisory optimal whole-dollar unit
+    (place_units, from board.py) INTO the ratio tooltip so a Place zone nudges the
+    player onto an exact-payout stake (e.g. "Best in $6 units — pays 7:6"). Falls
+    back to the plain pays() output when either the unit or ratio is missing.
+  #}
+  {% macro place_pays(key, label) %}
+    {%- if place_units.get(key) and zone_odds.get(key) -%}aria-label="{{ label }} — best in ${{ place_units[key] }} units, pays {{ zone_odds[key] }}" title="Best in ${{ place_units[key] }} units — pays {{ zone_odds[key] }}"{%- else -%}{{ pays(key, label) }}{%- endif -%}
+  {% endmacro %}
+
   <div class="felt" aria-label="Craps table">
     {# --- Place / box numbers row (playable) --- #}
     <div class="felt-boxes">
       {% for n in [4, 5, 6, 8, 9, 10] %}
-      <button class="zone zone-place" type="button"
-              {{ pays('place-' ~ n, 'Place ' ~ n) }}
+      <button class="zone zone-place{% if point == n %} zone-point{% endif %}" type="button"
+              {{ place_pays('place-' ~ n, 'Place ' ~ n) }}
               hx-post="/game/{{ session_id }}/bet"
               hx-vals='{"spec": "place {{ n }}"}'
               hx-include="#stake"
               hx-target="#board" hx-swap="outerHTML"
               {% if game_over %}disabled{% endif %}>
         <span class="zone-num">{{ n }}</span>
+        {% if point == n %}<span class="point-puck" aria-label="Point is {{ n }}">ON</span>{% endif %}
         {{ chip("place-" ~ n) }}
         {{ chip("come-" ~ n, "chip-come") }}
         {{ chip("dontcome-" ~ n, "chip-come") }}
       </button>
       {% endfor %}
     </div>
+    <p class="felt-tip">Tip: place 6 &amp; 8 in $6 units; 5, 9, 4 &amp; 10 in $5 units for exact payouts.</p>
 
     {# --- Come (large playable area) --- #}
     <button class="zone zone-come" type="button"

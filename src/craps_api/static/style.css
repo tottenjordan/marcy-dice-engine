@@ -15,6 +15,7 @@
   --felt-ink: #f8fafc;
   --chip: #dc2626;
   --chip-come: #2563eb;
+  --puck: #facc15;
 }
 
 * { box-sizing: border-box; }
@@ -192,6 +193,15 @@ button:hover { filter: brightness(1.08); }
   gap: 0.4rem;
 }
 
+/* Advisory unit tip under the place row: small, muted-on-felt guidance text. */
+.felt-tip {
+  font-size: 0.75rem;
+  opacity: 0.85;
+  margin: 0;
+  text-align: center;
+  color: var(--felt-ink);
+}
+
 .felt-line {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -262,6 +272,28 @@ button.zone:disabled { cursor: not-allowed; opacity: 0.5; }
 .chip { background: var(--chip); }
 .chip-come { background: var(--chip-come); left: -0.5rem; right: auto; }
 
+/* Point-established box: a yellow ring + glow (only one box is ever the point). */
+.zone-point {
+  border-color: var(--puck);
+  box-shadow: 0 0 0 3px var(--puck), 0 0 10px 2px rgba(250, 204, 21, 0.5);
+}
+
+/* The "ON" puck: a small round white-on-dark token pinned to the point box's
+   bottom-left corner (the chip lives top-right, so the two never collide). */
+.point-puck {
+  position: absolute;
+  bottom: -0.5rem;
+  left: -0.5rem;
+  background: #111;
+  color: #fff;
+  border: 2px solid var(--puck);
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 0.1rem 0.3rem;
+  letter-spacing: 0.05em;
+}
+
 /* Shared stake input + control cluster around the felt. */
 .controls {
   display: grid;
@@ -283,6 +315,11 @@ button.zone:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .roll-net-win { color: var(--win); }
 .roll-net-lose { color: var(--lose); }
+
+/* Net-percent badge beside the Net dollar figure, tinted win/lose. */
+.net-pct { font-size: 0.75rem; font-weight: 700; }
+.net-pct-win { color: var(--win); }
+.net-pct-lose { color: var(--lose); }
 
 /* Last-10 roll history strip (#5): small dice chips in a row, wraps/scrolls. */
 .roll-strip {

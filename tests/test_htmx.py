@@ -746,12 +746,18 @@ def test_total_at_risk_badge_present() -> None:
 
 
 def test_playable_zone_carries_pays_tooltip() -> None:
-    """Playable zones fold their payout ratio into a title tooltip + aria-label."""
+    """Playable zones fold their payout ratio into a title tooltip + aria-label.
+
+    Line/odds/lay zones use the ratio-only pays() tooltip (Pass Line 1:1); Place
+    zones now use the unit-folded place_pays() tooltip (Q3), so Place 6's ratio
+    reads through the "Best in $6 units — pays 7:6" form instead of a bare "Pays".
+    """
     client = _client()
     _sid, html = _start_game(client, seed=1, starting_bankroll=300)
-    # Place 6 pays 7:6; Pass Line pays 1:1 — both come-out-visible zones.
-    assert 'title="Pays 7:6"' in html
+    # Pass Line still uses the plain ratio-only tooltip.
     assert 'title="Pays 1:1"' in html
+    # Place 6 pays 7:6, now folded together with its advisory $6 unit.
+    assert 'title="Best in $6 units — pays 7:6"' in html
     assert "pays 7:6" in html.lower()  # folded into the place-6 aria-label too
 
 
@@ -855,3 +861,64 @@ def test_empty_bet_submission_renders_refusal_not_crash() -> None:
     resp = client.post(f"/game/{sid}/bet", data={})
     assert resp.status_code == 200
     assert "$300" in resp.text
+
+
+# --- Q3 felt guidance: unit tips, point marker, net percent -----------------
+
+
+def test_place_zone_tooltip_folds_advisory_unit() -> None:
+    """Each Place zone's tooltip advises its optimal whole-dollar unit + payout ratio."""
+    client = _client()
+    _sid, html = _start_game(client, seed=1, starting_bankroll=300)
+    # Place 6 pays 7:6 and is best played in $6 units; Place 4 pays 9:5 in $5 units.
+    assert 'title="Best in $6 units — pays 7:6"' in html
+    assert 'title="Best in $5 units — pays 9:5"' in html
+    # The advisory unit is folded into the place aria-label too.
+    assert "best in $6 units, pays 7:6" in html.lower()
+
+
+def test_felt_shows_static_unit_tip() -> None:
+    """A static tip near the place row nudges players onto exact-payout units."""
+    client = _client()
+    _sid, html = _start_game(client, seed=1, starting_bankroll=300)
+    assert 'class="felt-tip"' in html
+    assert "Tip: place 6" in html
+
+
+def test_point_marker_absent_on_come_out_present_on_point() -> None:
+    """The ON puck + yellow ring appear only once a point is established, on that box."""
+    client = _client()
+    sid, come_out_html = _start_game(client, seed=1, starting_bankroll=300)
+    # No point on the come-out roll: no point ring/puck yet.
+    assert "zone-point" not in come_out_html
+
+    # Roll until a point is on, capturing the very board HTML that established it.
+    point = 0
+    point_html = ""
+    for _ in range(20):
+        point_html = client.post(f"/game/{sid}/roll").text
+        match = re.search(r'"spec": "take (\d+)"', point_html)
+        if match is not None:
+            point = int(match.group(1))
+            break
+    assert point, "no point established within cap"
+
+    # The point's box carries the ring class, the ON puck text, and its aria-label.
+    assert "zone-point" in point_html
+    assert ">ON<" in point_html
+    assert f"Point is {point}" in point_html
+
+
+def test_net_percent_renders_after_resolving_roll() -> None:
+    """Once the running net is non-zero, a tinted net-percent span shows beside Net."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
+    html = ""
+    for _ in range(40):
+        html = client.post(f"/game/{sid}/roll").text
+        if "net-pct" in html or "Game over" in html:
+            break
+    # The net-percent badge is present and carries a "(...%)" figure.
+    assert "net-pct" in html
+    assert re.search(r"net-pct[^>]*>\(\S*%\)", html) is not None
