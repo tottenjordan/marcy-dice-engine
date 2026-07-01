@@ -12,16 +12,18 @@ from __future__ import annotations
 
 from fractions import Fraction
 
+from craps_engine.bets.base import Resolution, ResolutionStatus
 from craps_engine.bets.line import PassLine
-from craps_engine.dice import ScriptedDice
+from craps_engine.dice import DiceRoll, ScriptedDice
 from craps_engine.session import (
     SessionConfig,
     SessionResult,
+    SettleResult,
     Strategy,
     Table,
     run_session,
 )
-from craps_engine.state import GameState, Phase
+from craps_engine.state import GameState, Phase, PhaseTransition
 
 
 class _PassLineProbe:
@@ -40,6 +42,23 @@ class _PassLineProbe:
             b.id == "pass" for b in table.active_bets()
         ):
             table.add_bet(PassLine("pass", Fraction(self.unit)))
+
+
+class _RidingBet(PassLine):
+    """A bet that always reports NO_ACTION, so it survives every roll.
+
+    Used to prove :meth:`Table.settle` prunes resolved bets while keeping
+    unresolved survivors on the table.
+    """
+
+    def resolve(self, roll: DiceRoll, state: GameState) -> Resolution:
+        del roll, state
+        return Resolution(
+            bet_id=self.id,
+            status=ResolutionStatus.NO_ACTION,
+            delta=Fraction(0),
+            note="riding",
+        )
 
 
 class TestTable:
@@ -72,6 +91,75 @@ class TestTable:
         snapshot = table.active_bets()
         snapshot.clear()
         assert len(table.active_bets()) == 1
+
+
+class TestTableSettle:
+    """The extracted per-roll settlement method :meth:`Table.settle`."""
+
+    def _point_four_table(self, bankroll: int) -> Table:
+        """A table already on point 4 (the phase machine advanced past come-out)."""
+        state = GameState()
+        state.apply(4)  # establish point 4
+        assert state.phase is Phase.POINT
+        assert state.point == 4
+        return Table(Fraction(bankroll), state)
+
+    def test_returns_settle_result_pairing_bets_and_transition(self) -> None:
+        """settle returns a SettleResult pairing each live bet with a Resolution
+        and the PhaseTransition from applying the rolled total."""
+        table = self._point_four_table(300)
+        bet = PassLine("pass", Fraction(10))
+        table.add_bet(bet)
+
+        result = table.settle(DiceRoll(3, 4))  # seven-out on point 4
+
+        assert isinstance(result, SettleResult)
+        assert len(result.settled) == 1
+        settled_bet, resolution = result.settled[0]
+        assert settled_bet is bet
+        assert isinstance(resolution, Resolution)
+        assert isinstance(result.transition, PhaseTransition)
+        assert result.transition.seven_out is True
+
+    def test_mutates_bankroll_by_sum_of_deltas(self) -> None:
+        """settle adds each resolution.delta to bankroll: a PassLine on point 4
+        that sees a 7 loses its stake, dropping bankroll by exactly the stake."""
+        table = self._point_four_table(300)
+        table.add_bet(PassLine("pass", Fraction(10)))
+
+        table.settle(DiceRoll(3, 4))  # seven-out -> LOSE -10
+
+        assert table.bankroll == Fraction(290)
+
+    def test_resolves_before_applying_phase(self) -> None:
+        """A PassLine riding point 4 when a 7 lands must resolve as a LOSE
+        (seven-out), proving resolution happens BEFORE the phase is applied."""
+        table = self._point_four_table(300)
+        table.add_bet(PassLine("pass", Fraction(10)))
+
+        result = table.settle(DiceRoll(3, 4))
+
+        _, resolution = result.settled[0]
+        assert resolution.status is ResolutionStatus.LOSE
+        # The phase machine was applied only AFTER resolution: it is now reset.
+        assert table.state.phase is Phase.COME_OUT
+        assert table.state.point is None
+
+    def test_prunes_non_survivors_and_keeps_survivors(self) -> None:
+        """After a resolving roll a one-and-done bet is pruned from active_bets
+        while an unresolved (NO_ACTION) survivor remains.
+
+        A ``PassLine`` on point 4 loses (and comes down) on the 7; a
+        ``_RidingBet`` that always reports NO_ACTION stays working.
+        """
+        table = self._point_four_table(300)
+        table.add_bet(PassLine("done", Fraction(10)))  # LOSEs on the 7 -> pruned
+        table.add_bet(_RidingBet("rider", Fraction(10)))  # always NO_ACTION
+
+        table.settle(DiceRoll(3, 4))  # seven-out
+
+        ids = [b.id for b in table.active_bets()]
+        assert ids == ["rider"]
 
 
 class TestRunSessionOutcomes:

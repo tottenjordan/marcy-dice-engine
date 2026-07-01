@@ -19,6 +19,8 @@ resolve versus advance the phase machine is load-bearing. Per roll we:
 6. ONLY THEN ``state.apply`` the rolled total to move the phase machine,
 7. record the post-roll bankroll and check termination.
 
+Steps 3-6 -- the load-bearing settlement -- live in :meth:`Table.settle`, which
+``run_session`` calls once per roll; steps 1, 2, and 7 stay in the loop.
 Resolving before applying is what keeps ``resolve`` a pure read of the current
 phase; applying after is what readies the machine for the NEXT roll.
 
@@ -49,7 +51,8 @@ from craps_engine.state import GameState
 
 if TYPE_CHECKING:
     from craps_engine.bets.base import Bet, Resolution
-    from craps_engine.dice import Dice
+    from craps_engine.dice import Dice, DiceRoll
+    from craps_engine.state import PhaseTransition
 
 
 @runtime_checkable
@@ -145,13 +148,26 @@ class SessionResult:
         }
 
 
+@dataclass(frozen=True)
+class SettleResult:
+    """Outcome of settling one already-rolled DiceRoll against the table.
+
+    ``settled`` pairs each bet that was live at roll time with its Resolution
+    (in resolution order); ``transition`` is the PhaseTransition returned by
+    advancing the phase machine AFTER all bets resolved.
+    """
+
+    settled: list[tuple[Bet, Resolution]]
+    transition: PhaseTransition
+
+
 class Table:
     """The mutable live state of a session: bankroll, phase machine, and bets.
 
     A plain mutable class (not a frozen value object) because a session mutates
     all three fields as play proceeds. The bet list is private so the only ways
     to touch it are :meth:`add_bet` (append) and :meth:`active_bets` (a read-only
-    snapshot) -- ``run_session`` itself replaces the survivor list directly.
+    snapshot); :meth:`settle` owns the per-roll survivor swap internally.
     """
 
     def __init__(self, bankroll: Fraction, state: GameState | None = None) -> None:
@@ -160,7 +176,7 @@ class Table:
         self.bankroll = bankroll
         #: The table-level come-out / point phase machine.
         self.state = state if state is not None else GameState()
-        #: Live wagers; mutated only via add_bet / run_session's survivor swap.
+        #: Live wagers; mutated only via add_bet / Table.settle's survivor swap.
         self._bets: list[Bet] = []
 
     def add_bet(self, bet: Bet) -> None:
@@ -170,6 +186,36 @@ class Table:
     def active_bets(self) -> list[Bet]:
         """Return a COPY of the live bets so callers cannot mutate the internals."""
         return list(self._bets)
+
+    def settle(self, roll: DiceRoll) -> SettleResult:
+        """Resolve every live bet against the PRE-roll state, then advance the machine.
+
+        Runs the load-bearing per-roll ordering on an ALREADY-rolled DiceRoll:
+        resolve all bets vs the current phase (summing signed deltas into
+        ``bankroll``) -> advance each bet -> prune non-survivors -> apply the
+        rolled total to the phase machine. Returns the settled (bet, resolution)
+        pairs and the resulting PhaseTransition. Placing bets and rolling happen
+        OUTSIDE this method (a human or a strategy interleaves between them).
+        """
+        # 3. Resolve EVERY live bet against the PRE-roll state (do not apply the
+        #    phase machine first -- bets must read the current phase/point).
+        settled: list[tuple[Bet, Resolution]] = []
+        for bet in self.active_bets():
+            resolution = bet.resolve(roll, self.state)
+            self.bankroll += resolution.delta
+            settled.append((bet, resolution))
+
+        # 4. Let each bet apply its own per-roll transition (advance hook).
+        for bet, resolution in settled:
+            bet.advance(roll, resolution)
+
+        # 5. Keep only the bets that remain on the table after this roll.
+        self._bets = [bet for bet, resolution in settled if bet.remains_on_table(resolution, roll)]
+
+        # 6. ONLY NOW advance the phase machine, readying it for the next roll.
+        transition = self.state.apply(roll.total)
+
+        return SettleResult(settled=settled, transition=transition)
 
 
 def run_session(dice: Dice, strategy: Strategy, config: SessionConfig) -> SessionResult:
@@ -200,25 +246,10 @@ def run_session(dice: Dice, strategy: Strategy, config: SessionConfig) -> Sessio
         # 2. Roll the dice.
         roll = dice.roll()
 
-        # 3. Resolve EVERY live bet against the PRE-roll state (do not apply the
-        #    phase machine first -- bets must read the current phase/point).
-        settled: list[tuple[Bet, Resolution]] = []
-        for bet in table.active_bets():
-            resolution = bet.resolve(roll, table.state)
-            table.bankroll += resolution.delta
-            settled.append((bet, resolution))
-
-        # 4. Let each bet apply its own per-roll transition (advance hook).
-        for bet, resolution in settled:
-            bet.advance(roll, resolution)
-
-        # 5. Keep only the bets that remain on the table after this roll.
-        table._bets = [  # noqa: SLF001 (run_session owns the survivor swap)
-            bet for bet, resolution in settled if bet.remains_on_table(resolution, roll)
-        ]
-
-        # 6. ONLY NOW advance the phase machine, readying it for the next roll.
-        table.state.apply(roll.total)
+        # 3-6. Settle the roll: resolve PRE-apply -> advance -> prune -> apply.
+        #    Table.settle owns this load-bearing ordering; the returned
+        #    SettleResult is ignored here (bankroll is read off the table).
+        table.settle(roll)
 
         # 7. Record the post-roll bankroll and update the trajectory extremes.
         history.append(table.bankroll)
