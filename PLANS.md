@@ -65,7 +65,24 @@ in `craps_api/` (no engine changes, no new routes). Order T1 → T2 → T3.
 |---|---|---|---|
 | T1 | board.py — felt zone-keys + `chip_zones` aggregation (pure) | ✅ Done | `641bcd7` |
 | T2 | _board.html + style.css — clickable felt with chips + dimmed unsupported | ✅ Done | `26e0568` |
-| T3 | docs sync (README/CLAUDE) for the visual table | ⬜ Pending | |
+| T3 | docs sync (README/CLAUDE) for the visual table | ➡️ Folded into Phase 5 P7 | |
+
+## Phase 5 (play-feature upgrades — in progress)
+
+Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Uncapped play,
+press/remove bet ops, and felt trackers (odds tooltips, risk total, last-10 roll
+strip, per-roll net). Engine-first; `craps_api` adds thin routes + render.
+Order P1 → P7. Deps: P4 needs P1+P3; P5 needs P1+P2+P3; P6 needs P4+P5; P7 last.
+
+| # | Item | Status | Commit |
+|---|---|---|---|
+| P1 | engine — uncapped interactive play (optional `max_rolls`) | ✅ Done | `f8130c5` |
+| P2 | engine — recent roll history on controller/view | ⬜ Pending | |
+| P3 | engine — remove + press bet operations | ⬜ Pending | |
+| P4 | api — remove/press routes + uncapped web wiring + JSON parity | ⬜ Pending | |
+| P5 | board — risk total, roll-net, history, odds tips, per-bet controls | ⬜ Pending | |
+| P6 | ui — felt trackers + per-bet press/remove controls | ⬜ Pending | |
+| P7 | docs — README/CLAUDE + captured UI screenshots (absorbs T3) | ⬜ Pending | |
 
 ## Phase 3 backlog
 
