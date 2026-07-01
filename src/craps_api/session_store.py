@@ -49,7 +49,7 @@ class SessionStore:
         self,
         *,
         starting_bankroll: int,
-        max_rolls: int,
+        max_rolls: int | None = None,
         win_goal: int | None = None,
         loss_limit: int = 0,
         seed: int | None = None,
@@ -59,6 +59,11 @@ class SessionStore:
         Whole-dollar int knobs are converted to exact :class:`~fractions.Fraction`
         money for the engine. ``seed`` seeds a :class:`RandomDice` (``None`` =
         nondeterministic). A fresh :func:`uuid.uuid4` hex is the session id.
+
+        ``max_rolls`` defaults to ``None`` (uncapped) for interactive play, where
+        a game runs to bust or its win goal rather than a roll cap; the config
+        accepts ``None`` unchanged. Batch/programmatic callers may still pass an
+        int to cap the game at that many rolls.
         """
         config = SessionConfig(
             starting_bankroll=Fraction(starting_bankroll),

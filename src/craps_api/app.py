@@ -74,15 +74,19 @@ class NewGamePayload(TypedDict):
 
 # Default game knobs when the client omits them.
 _DEFAULT_STARTING_BANKROLL = 300
-_DEFAULT_MAX_ROLLS = 100
 
 
 class NewGameRequest(BaseModel):
-    """JSON body for ``POST /api/game`` — every field has a sensible default."""
+    """JSON body for ``POST /api/game`` — every field has a sensible default.
+
+    ``max_rolls`` defaults to ``None`` (uncapped), so JSON games run to bust/goal
+    like the interactive web games; a programmatic client may still pass an int to
+    cap the game at that many rolls.
+    """
 
     seed: int | None = None
     starting_bankroll: int = _DEFAULT_STARTING_BANKROLL
-    max_rolls: int = _DEFAULT_MAX_ROLLS
+    max_rolls: int | None = None
     win_goal: int | None = None
     loss_limit: int = 0
 
@@ -178,7 +182,7 @@ def _place_from_form(
     return ""
 
 
-def create_app() -> FastAPI:
+def create_app() -> FastAPI:  # noqa: C901 (a route-registration factory: each route is a closure over ``store``/``templates``)
     """Build the FastAPI app with its own in-memory :class:`SessionStore`.
 
     The store is attached to ``app.state`` so it is discoverable/testable and so
@@ -219,6 +223,24 @@ def create_app() -> FastAPI:
         """Roll once and return the :class:`RollOutcome` (404 if unknown id)."""
         return _controller_or_404(store, session_id).roll().to_dict()
 
+    @app.post("/api/game/{session_id}/bet/{bet_id}/remove", response_model=None)
+    def remove_bet(session_id: str, bet_id: str) -> PlaceOutcomePayload:
+        """Remove a bet by id; a legal-but-refused removal is still 200 with ``ok=false``.
+
+        Only an unknown SESSION is a 404 — an unknown BET id is handled by the
+        controller (``ok=false``), mirroring the placement route's contract.
+        """
+        return _controller_or_404(store, session_id).remove_bet(bet_id).to_dict()
+
+    @app.post("/api/game/{session_id}/bet/{bet_id}/press", response_model=None)
+    def press_bet(session_id: str, bet_id: str) -> PlaceOutcomePayload:
+        """Press a just-won bet by id; a refused press is still 200 with ``ok=false``.
+
+        Only an unknown SESSION is a 404 — a refusal (no live bet, nothing won,
+        already pressed) is handled by the controller with ``ok=false``.
+        """
+        return _controller_or_404(store, session_id).press_bet(bet_id).to_dict()
+
     # --- HTML routes (server-rendered HTMX frontend) ------------------------
     #
     # ``GET /`` serves the new-game FORM plus an empty placeholder board (no
@@ -237,18 +259,18 @@ def create_app() -> FastAPI:
     def start_game(
         request: Request,
         starting_bankroll: Annotated[int, Form()] = _DEFAULT_STARTING_BANKROLL,
-        max_rolls: Annotated[int, Form()] = _DEFAULT_MAX_ROLLS,
         seed: Annotated[int | None, Form()] = None,
     ) -> HTMLResponse:
         """Create a game from the form and return its come-out board partial.
 
-        The web form intentionally exposes only seed/stake/max-rolls; win-goal
-        and loss-limit fall to the store defaults (the JSON ``POST /api/game``
-        route supports the full knob set for programmatic clients).
+        The web form intentionally exposes only seed/stake; web games are
+        UNCAPPED (``max_rolls`` defaults to ``None``) and run to bust or, if set,
+        a win goal. Win-goal and loss-limit fall to the store defaults (the JSON
+        ``POST /api/game`` route supports the full knob set for programmatic
+        clients).
         """
         session_id, controller = store.create(
             starting_bankroll=starting_bankroll,
-            max_rolls=max_rolls,
             seed=seed,
         )
         return _render_board(templates, request, session_id=session_id, view=controller.snapshot())
@@ -269,6 +291,32 @@ def create_app() -> FastAPI:
         """
         controller = _controller_or_404(store, session_id)
         flash = _place_from_form(controller, spec=spec, amount=amount, text=text)
+        return _render_board(
+            templates, request, session_id=session_id, view=controller.snapshot(), flash=flash
+        )
+
+    @app.post("/game/{session_id}/remove", response_class=HTMLResponse)
+    def remove_bet_html(
+        request: Request,
+        session_id: str,
+        bet_id: Annotated[str, Form()],
+    ) -> HTMLResponse:
+        """Remove a bet by id and return the board partial (refusal flashed, no 500)."""
+        controller = _controller_or_404(store, session_id)
+        flash = controller.remove_bet(bet_id).message
+        return _render_board(
+            templates, request, session_id=session_id, view=controller.snapshot(), flash=flash
+        )
+
+    @app.post("/game/{session_id}/press", response_class=HTMLResponse)
+    def press_bet_html(
+        request: Request,
+        session_id: str,
+        bet_id: Annotated[str, Form()],
+    ) -> HTMLResponse:
+        """Press a just-won bet by id and return the board partial (refusal flashed)."""
+        controller = _controller_or_404(store, session_id)
+        flash = controller.press_bet(bet_id).message
         return _render_board(
             templates, request, session_id=session_id, view=controller.snapshot(), flash=flash
         )

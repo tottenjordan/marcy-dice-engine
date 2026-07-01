@@ -233,6 +233,29 @@ def test_bet_rows_carry_number_and_come_point() -> None:
 # --- HTML route tests -------------------------------------------------------
 
 
+def _establish_point_html(client: TestClient, sid: str, *, cap: int = 20) -> int:
+    """Roll the HTML game until a point is on; return that point (fails otherwise)."""
+    for _ in range(cap):
+        html = client.post(f"/game/{sid}/roll").text
+        match = re.search(r'"spec": "take (\d+)"', html)
+        if match is not None:
+            return int(match.group(1))
+    msg = "no point established within cap"
+    raise AssertionError(msg)
+
+
+def _place_win_id(html: str) -> str:
+    """Pull a winning place bet's id from the rendered outcomes list (fails if none).
+
+    The board's outcomes ``<li>`` renders ``{{ res.bet_id }}: {{ res.status }}``
+    as text (e.g. ``place0: win $14 — place 6 hit``), so a winning place bet's id
+    is recoverable from the HTML without adding markup.
+    """
+    match = re.search(r"(place\d+): win", html)
+    assert match is not None, "expected a winning place bet in the outcomes list"
+    return match.group(1)
+
+
 def test_index_returns_shell_with_form_and_htmx() -> None:
     resp = _client().get("/")
     assert resp.status_code == 200
@@ -241,6 +264,13 @@ def test_index_returns_shell_with_form_and_htmx() -> None:
     assert 'name="seed"' in html
     assert 'name="starting_bankroll"' in html
     assert "htmx" in html.lower()
+
+
+def test_index_form_has_no_max_rolls_field() -> None:
+    """Web games are uncapped: the new-game form no longer exposes max rolls."""
+    resp = _client().get("/")
+    assert resp.status_code == 200
+    assert 'name="max_rolls"' not in resp.text
 
 
 def test_start_game_returns_board_with_bankroll_and_hint() -> None:
@@ -352,14 +382,81 @@ def test_take_odds_zone_gated_on_come_out_then_appears_on_point() -> None:
     assert '"spec": "take "' not in html
 
 
-def test_game_over_banner_and_gated_controls() -> None:
-    """max_rolls=1 terminates after one roll; banner shown, controls gated."""
+def test_remove_bet_drops_it_from_board() -> None:
+    """Placing then removing a Pass bet takes it off the rendered board."""
     client = _client()
-    sid, _ = _start_game(client, seed=1, starting_bankroll=300, max_rolls=1)
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    placed = client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
+    assert "PassLine" in placed.text
+    # The HTML and JSON routes share ONE store, so the bet id is recoverable via
+    # the JSON snapshot for this same session id (the board HTML does not embed it).
+    view = client.get(f"/api/game/{sid}").json()
+    bet_id = view["active_bets"][0]["id"]
+
+    removed = client.post(f"/game/{sid}/remove", data={"bet_id": bet_id})
+    assert removed.status_code == 200
+    # No active bets remain: the "Your bets" list falls back to its empty state.
+    assert "No active bets." in removed.text
+    assert "PassLine" not in removed.text
+
+
+def test_remove_unknown_bet_id_flashes_no_500() -> None:
+    """An unknown bet id to /remove is handled cleanly: 200 with a flashed notice."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=300)
+    resp = client.post(f"/game/{sid}/remove", data={"bet_id": "nope"})
+    assert resp.status_code == 200
+    assert "nope" in resp.text  # the refusal message names the missing id
+
+
+def test_press_just_won_bet_increases_displayed_amount() -> None:
+    """Pressing a Place bet right after it wins grows its displayed stake."""
+    client = _client()
+    sid, _ = _start_game(client, seed=5, starting_bankroll=1000)
+    point = _establish_point_html(client, sid)
+    client.post(f"/game/{sid}/bet", data={"spec": f"place {point}", "amount": 12})
+
+    # Roll until the place bet wins, then capture its id from the outcomes list.
+    bet_id = ""
+    for _ in range(40):
+        html = client.post(f"/game/{sid}/roll").text
+        if re.search(r"place\d+: win", html):
+            bet_id = _place_win_id(html)
+            break
+    assert bet_id, "place bet never won within cap"
+
+    pressed = client.post(f"/game/{sid}/press", data={"bet_id": bet_id})
+    assert pressed.status_code == 200
+    # A pressed place-N chip is strictly larger than the original $12 stake.
+    assert "$12" not in pressed.text or "pressed" in pressed.text.lower()
+
+
+def test_start_game_form_is_uncapped_and_survives_many_rolls() -> None:
+    """A web game (POST /game, no max_rolls) does not end by roll count."""
+    client = _client()
+    sid, _ = _start_game(client, seed=1, starting_bankroll=100000)
+    html = ""
+    for _ in range(150):
+        html = client.post(f"/game/{sid}/roll").text
+    assert "Game over" not in html
+    # Uncapped: the rolls-left figure renders as None (final display is P6's job).
+    assert "Rolls used" in html
+
+
+def test_game_over_banner_and_gated_controls() -> None:
+    """A bust ends the (uncapped) web game: banner shown, controls gated.
+
+    Web games are uncapped (no max_rolls form field), so game-over is driven by a
+    BUST instead: a $10 pass-line bet on a $10 stake busts to $0 on a come-out
+    craps loss. Seed 2's first roll is that loss, so one roll ends the game.
+    """
+    client = _client()
+    sid, _ = _start_game(client, seed=2, starting_bankroll=10)
+    client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
     resp = client.post(f"/game/{sid}/roll")
     html = resp.text
     assert "Game over" in html
-    assert "max rolls reached" in html
+    assert "bust" in html
     # Roll control must be gated once the game is over.
     assert f"/game/{sid}/roll" not in html
     # Zone buttons must be disabled once the game is over.

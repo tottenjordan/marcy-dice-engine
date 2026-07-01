@@ -8,6 +8,7 @@ reproducibility over HTTP, the illegal-vs-malformed distinction, unknown-session
 
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import TYPE_CHECKING
 
 from fastapi.testclient import TestClient
@@ -31,6 +32,41 @@ def _new_game(client: TestClient, **body: object) -> tuple[str, GameViewPayload]
     return data["session_id"], data["view"]
 
 
+def _establish_point(client: TestClient, session_id: str, *, cap: int = 20) -> int:
+    """Roll until a point is on; return that point number (fails if none in ``cap``)."""
+    for _ in range(cap):
+        view = client.post(f"/api/game/{session_id}/roll").json()["view"]
+        if view["point"] is not None:
+            point = view["point"]
+            assert isinstance(point, int)
+            return point
+    msg = "no point established within cap"
+    raise AssertionError(msg)
+
+
+def _roll_until_place_win(
+    client: TestClient, session_id: str, bet_id: str, *, cap: int = 40
+) -> GameViewPayload:
+    """Roll until ``bet_id`` wins on a roll; return that winning view (fails otherwise).
+
+    A Place bet is a STANDING wager that survives its own win, so after it wins it
+    is still live and immediately pressable — the natural vehicle for a
+    deterministic press test through the API.
+    """
+    for _ in range(cap):
+        view: GameViewPayload = client.post(f"/api/game/{session_id}/roll").json()["view"]
+        if view["game_over"]:
+            break
+        won = any(
+            outcome["bet_id"] == bet_id and outcome["status"] == "win"
+            for outcome in view["last_outcomes"]
+        )
+        if won:
+            return view
+    msg = f"bet {bet_id!r} did not win within cap"
+    raise AssertionError(msg)
+
+
 def test_new_game_returns_session_and_come_out_view() -> None:
     client = _client()
     session_id, view = _new_game(client, starting_bankroll=300, max_rolls=100)
@@ -41,6 +77,107 @@ def test_new_game_returns_session_and_come_out_view() -> None:
     assert view["bankroll"]["exact"] == "300/1"
     assert view["active_bets"] == []
     assert view["game_over"] is False
+
+
+def test_new_game_is_uncapped_by_default() -> None:
+    """A game created without max_rolls is uncapped: rolls_left is None."""
+    client = _client()
+    _sid, view = _new_game(client)
+    assert view["rolls_left"] is None
+
+
+def test_remove_bet_drops_it_from_active_bets() -> None:
+    client = _client()
+    session_id, _ = _new_game(client, seed=1)
+    bet = client.post(
+        f"/api/game/{session_id}/bet",
+        json={"kind": "pass", "amount": 10},
+    ).json()
+    assert bet["ok"] is True
+    bet_id = bet["view"]["active_bets"][0]["id"]
+
+    removed = client.post(f"/api/game/{session_id}/bet/{bet_id}/remove")
+    assert removed.status_code == 200
+    data = removed.json()
+    assert data["ok"] is True
+    ids = [b["id"] for b in data["view"]["active_bets"]]
+    assert bet_id not in ids
+
+
+def test_remove_unknown_bet_id_is_200_ok_false() -> None:
+    """An unknown BET id is handled by the controller (200, ok=false), not a 404."""
+    client = _client()
+    session_id, _ = _new_game(client, seed=1)
+    resp = client.post(f"/api/game/{session_id}/bet/nope/remove")
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is False
+
+
+def test_remove_on_unknown_session_is_404() -> None:
+    """Only an unknown SESSION is a 404 (an unknown bet id is 200/ok=false)."""
+    client = _client()
+    resp = client.post("/api/game/does-not-exist/bet/nope/remove")
+    assert resp.status_code == 404
+
+
+def test_press_after_win_grows_amount() -> None:
+    """Pressing a Place bet right after its winning roll increases its amount."""
+    client = _client()
+    session_id, _ = _new_game(client, seed=5, starting_bankroll=1000)
+    point = _establish_point(client, session_id)
+
+    placed = client.post(
+        f"/api/game/{session_id}/bet",
+        json={"kind": "place", "number": point, "amount": 12},
+    ).json()
+    assert placed["ok"] is True
+    bet_id = placed["view"]["active_bets"][0]["id"]
+
+    won_view = _roll_until_place_win(client, session_id, bet_id)
+    amount_before = next(b["amount"]["exact"] for b in won_view["active_bets"] if b["id"] == bet_id)
+
+    pressed = client.post(f"/api/game/{session_id}/bet/{bet_id}/press")
+    assert pressed.status_code == 200
+    data = pressed.json()
+    assert data["ok"] is True
+    amount_after = next(
+        b["amount"]["exact"] for b in data["view"]["active_bets"] if b["id"] == bet_id
+    )
+    assert Fraction(amount_after) > Fraction(amount_before)
+
+
+def test_press_with_nothing_won_is_200_ok_false() -> None:
+    """Pressing a bet that did not just win is refused (200, ok=false)."""
+    client = _client()
+    session_id, _ = _new_game(client, seed=1)
+    bet = client.post(
+        f"/api/game/{session_id}/bet",
+        json={"kind": "pass", "amount": 10},
+    ).json()
+    bet_id = bet["view"]["active_bets"][0]["id"]
+
+    resp = client.post(f"/api/game/{session_id}/bet/{bet_id}/press")
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is False
+
+
+def test_press_on_unknown_session_is_404() -> None:
+    client = _client()
+    resp = client.post("/api/game/does-not-exist/bet/nope/press")
+    assert resp.status_code == 404
+
+
+def test_uncapped_game_never_ends_by_roll_count() -> None:
+    """Many rolls on an uncapped game with a big bankroll never trigger game_over."""
+    client = _client()
+    session_id, _ = _new_game(client, seed=1, starting_bankroll=100_000)
+    last = None
+    for _ in range(150):
+        last = client.post(f"/api/game/{session_id}/roll").json()["view"]
+    assert last is not None
+    assert last["rolls_used"] == 150
+    assert last["rolls_left"] is None
+    assert last["game_over"] is False
 
 
 def test_full_flow_structured_bet_then_roll() -> None:
