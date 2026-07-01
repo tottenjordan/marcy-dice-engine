@@ -32,6 +32,7 @@ from craps_engine.specs import BetSpec, build_bet, parse_bet_spec
 from craps_engine.state import Phase
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from fractions import Fraction
 
     from craps_engine.bets.base import Bet, BetPayload, Resolution, ResolutionPayload
@@ -328,3 +329,124 @@ class PlayController:
         elif self._rolls_used >= config.max_rolls:
             self._game_over = True
             self._reason = "max rolls reached"
+
+
+# --- data-driven coaching hints ---------------------------------------------
+
+# Concrete bet-class names (``type(bet).__name__``) grouped by role, so the hint
+# predicates read as set-membership tests instead of scattered string literals.
+_LINE_BET_NAMES = frozenset({"PassLine", "DontPass", "ComeBet", "DontCome"})
+_ODDS_BET_NAMES = frozenset({"TakeOdds", "LayOdds"})
+
+# game_over_reason -> the one-line coaching message shown once a game has ended.
+_GAME_OVER_MESSAGES = {
+    "bust": "Game over — you busted. Start a new game to play again.",
+    "goal reached": "Game over — you hit your win goal!",
+    "max rolls reached": "Game over — out of rolls. Start a new game to play again.",
+}
+
+
+def _is_come_out(view: GameView) -> bool:
+    """True while the table is on the come-out (no point established)."""
+    return view.phase == Phase.COME_OUT.value
+
+
+def _has_place_bet_off(view: GameView) -> bool:
+    """True iff any active bet is a Place bet currently switched OFF.
+
+    Place bets default to OFF on the come-out, where they neither win nor lose;
+    flagging this lets the coach warn a player who may expect them to act.
+    """
+    return any(type(bet).__name__ == "PlaceBet" and not bet.working for bet in view.active_bets)
+
+
+def _odds_prompt_applies(view: GameView) -> bool:
+    """True iff odds are placeable and a line bet lacks any backing odds bet.
+
+    Requires the engine's own ``odds_available`` gate (a point is on), at least
+    one line bet to back, and no odds bet already down.
+    """
+    if not view.odds_available:
+        return False
+    names = {type(bet).__name__ for bet in view.active_bets}
+    return bool(names & _LINE_BET_NAMES) and not (names & _ODDS_BET_NAMES)
+
+
+def _always(_view: GameView) -> bool:
+    """Always-true predicate for the point-generic default rule."""
+    return True
+
+
+def _place_off_on_come_out(view: GameView) -> bool:
+    """True on the come-out with a non-working Place bet down."""
+    return _is_come_out(view) and _has_place_bet_off(view)
+
+
+def _render_game_over(view: GameView) -> str:
+    """Map ``game_over_reason`` to its message, defaulting for the unexpected."""
+    return _GAME_OVER_MESSAGES.get(
+        view.game_over_reason or "",
+        "Game over. Start a new game to play again.",
+    )
+
+
+def _render_place_off(_view: GameView) -> str:
+    """Warn that Place bets are OFF on the come-out roll."""
+    return (
+        "Heads up: place bets are OFF on the come-out roll — they don't win "
+        "or lose until a point is set."
+    )
+
+
+def _render_come_out(_view: GameView) -> str:
+    """Explain how a Pass line resolves on the come-out roll."""
+    return "Come-out roll: a Pass line wins on 7 or 11 and loses on 2, 3, or 12."
+
+
+def _render_odds_prompt(view: GameView) -> str:
+    """Prompt the player to back a naked line bet with free odds."""
+    return (
+        f"Point is {view.point}. You can back your line bet with free odds — "
+        "the only zero-house-edge bet in craps."
+    )
+
+
+def _render_point_generic(view: GameView) -> str:
+    """The catch-all point hint: make the point before a seven."""
+    return f"Point is {view.point}: roll it again before a 7 to win your Pass line."
+
+
+#: Ordered ``(predicate, render)`` coaching rules; FIRST match wins.
+#:
+#: Precedence: game-over first (nothing else matters once a game ends), then the
+#: come-out warnings/explainer, then the odds prompt, and finally the always-true
+#: point-generic default. Because the come-out explainer (:func:`_is_come_out`)
+#: catches every come-out view, reaching the final :func:`_always` rule implies a
+#: point is on, so the table is exhaustive over every possible view.
+_HINT_RULES: list[tuple[Callable[[GameView], bool], Callable[[GameView], str]]] = [
+    (lambda v: v.game_over, _render_game_over),
+    (_place_off_on_come_out, _render_place_off),
+    (_is_come_out, _render_come_out),
+    (_odds_prompt_applies, _render_odds_prompt),
+    (_always, _render_point_generic),
+]
+
+
+def coaching_hint(view: GameView) -> str:
+    """Return one short, single-line coaching hint for the current game moment.
+
+    Walks the module-level :data:`_HINT_RULES` table in precedence order and
+    returns the rendered message of the FIRST rule whose predicate matches
+    ``view``. The rules are exhaustive: the come-out explainer catches every
+    come-out view and the final always-true rule catches every point view, so a
+    match is guaranteed.
+
+    Args:
+        view: An immutable :class:`GameView` snapshot of the game.
+
+    Returns:
+        A single-line hint string tailored to ``view``'s phase, bets, and
+        game-over state.
+    """
+    render = next(render for predicate, render in _HINT_RULES if predicate(view))
+    return render(view)

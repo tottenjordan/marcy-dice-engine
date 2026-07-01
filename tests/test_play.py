@@ -13,7 +13,14 @@ from __future__ import annotations
 from fractions import Fraction
 
 from craps_engine.dice import RandomDice, ScriptedDice
-from craps_engine.play import GameView, PlaceOutcome, PlayController, RollOutcome
+from craps_engine.play import (
+    GameView,
+    PlaceOutcome,
+    PlayController,
+    RollOutcome,
+    _odds_prompt_applies,
+    coaching_hint,
+)
 from craps_engine.session import SessionConfig
 from craps_engine.specs import BetSpec
 from craps_engine.state import Phase
@@ -275,3 +282,114 @@ def test_isinstance_gameview() -> None:
     """snapshot returns a GameView instance."""
     ctrl = PlayController(ScriptedDice([]), _config())
     assert isinstance(ctrl.snapshot(), GameView)
+
+
+# --- data-driven coaching hints ---------------------------------------------
+
+
+class TestCoachingHint:
+    """First-matching-rule coverage for :func:`coaching_hint`.
+
+    Each test drives a :class:`PlayController` into exactly one rule's state and
+    asserts the precise hint string, verifying both the rule table's precedence
+    ordering and the ``{point}`` interpolations.
+    """
+
+    def test_game_over_bust(self) -> None:
+        """A busted game reports the bust game-over message."""
+        ctrl = PlayController(
+            ScriptedDice([(2, 2), (3, 4)]),
+            _config(starting_bankroll=Fraction(10), loss_limit=Fraction(0)),
+        )
+        ctrl.place_bet_text("pass:10")
+        ctrl.roll()  # point 4
+        ctrl.roll()  # seven-out -> bust
+        view = ctrl.snapshot()
+        assert view.game_over_reason == "bust"
+        assert coaching_hint(view) == ("Game over — you busted. Start a new game to play again.")
+
+    def test_game_over_goal_reached(self) -> None:
+        """Hitting the win goal reports the winner game-over message."""
+        ctrl = PlayController(ScriptedDice([(3, 4)]), _config(win_goal=Fraction(305)))
+        ctrl.place_bet_text("pass:10")
+        ctrl.roll()  # +10 -> goal reached
+        view = ctrl.snapshot()
+        assert view.game_over_reason == "goal reached"
+        assert coaching_hint(view) == "Game over — you hit your win goal!"
+
+    def test_game_over_max_rolls(self) -> None:
+        """Exhausting max_rolls reports the out-of-rolls game-over message."""
+        ctrl = PlayController(ScriptedDice([(1, 2)]), _config(max_rolls=1))
+        ctrl.roll()
+        view = ctrl.snapshot()
+        assert view.game_over_reason == "max rolls reached"
+        assert coaching_hint(view) == ("Game over — out of rolls. Start a new game to play again.")
+
+    def test_come_out_place_bet_off_warning(self) -> None:
+        """A non-working PlaceBet on the come-out triggers the place-off warning."""
+        ctrl = PlayController(ScriptedDice([]), _config())
+        ctrl.place_bet(BetSpec("place", 6, number=6))
+        view = ctrl.snapshot()
+        assert view.phase == Phase.COME_OUT.value
+        assert coaching_hint(view) == (
+            "Heads up: place bets are OFF on the come-out roll — they don't win "
+            "or lose until a point is set."
+        )
+
+    def test_come_out_explainer_default(self) -> None:
+        """A plain come-out (no place bet down) gives the Pass line explainer."""
+        ctrl = PlayController(ScriptedDice([]), _config())
+        ctrl.place_bet_text("pass:10")
+        view = ctrl.snapshot()
+        assert view.phase == Phase.COME_OUT.value
+        assert coaching_hint(view) == (
+            "Come-out roll: a Pass line wins on 7 or 11 and loses on 2, 3, or 12."
+        )
+
+    def test_point_with_line_no_odds_prompts_odds(self) -> None:
+        """On a point with a Pass line and no odds, prompt for free odds."""
+        ctrl = PlayController(ScriptedDice([(2, 2)]), _config())
+        ctrl.place_bet_text("pass:10")
+        ctrl.roll()  # establish point 4
+        view = ctrl.snapshot()
+        assert view.point == 4
+        assert coaching_hint(view) == (
+            "Point is 4. You can back your line bet with free odds — the only "
+            "zero-house-edge bet in craps."
+        )
+
+    def test_point_with_line_and_odds_falls_through_to_generic(self) -> None:
+        """A line bet already backed by odds yields the point-generic default."""
+        ctrl = PlayController(ScriptedDice([(3, 3)]), _config())
+        ctrl.place_bet_text("pass:10")
+        ctrl.roll()  # establish point 6
+        ctrl.place_bet(BetSpec("take", 10, number=6))
+        view = ctrl.snapshot()
+        assert view.point == 6
+        assert coaching_hint(view) == (
+            "Point is 6: roll it again before a 7 to win your Pass line."
+        )
+
+    def test_point_with_no_line_bet_falls_through_to_generic(self) -> None:
+        """A point with no line bet also yields the point-generic default."""
+        ctrl = PlayController(ScriptedDice([(2, 3)]), _config())
+        ctrl.place_bet(BetSpec("place", 6, number=5))
+        ctrl.roll()  # establish point 5, no line bet present
+        view = ctrl.snapshot()
+        assert view.point == 5
+        assert coaching_hint(view) == (
+            "Point is 5: roll it again before a 7 to win your Pass line."
+        )
+
+    def test_odds_prompt_guarded_when_odds_unavailable(self) -> None:
+        """The odds-prompt predicate is False when odds are not available.
+
+        Guards the ``not odds_available`` branch of the predicate directly: a
+        view can carry a line bet while odds are unavailable (e.g. on the
+        come-out), and the odds prompt must not fire there.
+        """
+        ctrl = PlayController(ScriptedDice([]), _config())
+        ctrl.place_bet_text("pass:10")  # line bet down, still on the come-out
+        view = ctrl.snapshot()
+        assert view.odds_available is False
+        assert not _odds_prompt_applies(view)
