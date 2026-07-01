@@ -111,7 +111,7 @@ the interactive bankroll to a wallet/cash model. Design note:
 | P7a | web — snap place-bet stakes to optimal units (placement + press) | ✅ Done | `2cbe555` |
 | P7b | web — wallet/cash bankroll (place deducts, remove refunds; bust on net worth); at-risk = all stakes; `(off)` uses effective-live | ✅ Done | `96e1b95` |
 | P7c | engine — free odds require a flat bet + enforce 3-4-5x max at placement | ✅ Done | `b0b6a52` |
-| P7d | web — advisory free-odds units: `odds_unit`/`snap_to_odds_unit`, felt snap + tooltip | ✅ Done | `TBD` |
+| P7d | web — advisory free-odds units: `odds_unit`/`snap_to_odds_unit`, felt snap + tooltip | ✅ Done | `b4962fd` |
 
 ## Phase 3 backlog
 
