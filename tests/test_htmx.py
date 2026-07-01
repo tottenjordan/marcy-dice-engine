@@ -348,6 +348,47 @@ def test_zone_odds_are_exact_static_ratios() -> None:
     assert zo["lay-6"] == "5:6"
 
 
+def test_place_units_are_exact_static_units() -> None:
+    ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
+    pu = ctx["place_units"]
+    assert pu["place-6"] == 6
+    assert pu["place-8"] == 6
+    assert pu["place-5"] == 5
+    assert pu["place-9"] == 5
+    assert pu["place-4"] == 5
+    assert pu["place-10"] == 5
+
+
+def test_net_pct_positive() -> None:
+    payload = _base_payload(
+        running_net=serialize_fraction(Fraction(40), as_percent=False),
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["net_pct"] == "+13.3%"
+
+
+def test_net_pct_negative() -> None:
+    payload = _base_payload(
+        running_net=serialize_fraction(Fraction(-12), as_percent=False),
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["net_pct"] == "-4.0%"
+
+
+def test_net_pct_zero() -> None:
+    ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["net_pct"] == "0.0%"
+
+
+def test_net_pct_zero_starting_bankroll() -> None:
+    payload = _base_payload(
+        starting_bankroll=_money(0),
+        running_net=serialize_fraction(Fraction(40), as_percent=False),
+    )
+    ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]
+    assert ctx["net_pct"] == ""
+
+
 def test_can_remove_true_while_not_game_over() -> None:
     payload = _base_payload(active_bets=[_bet("PassLine", 10)])
     ctx = build_board_context(payload, session_id="x", hint="")  # type: ignore[arg-type]

@@ -21,7 +21,7 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import TYPE_CHECKING, TypedDict
 
-from craps_engine.registry import REGISTRY, odds_ratio, place_spec
+from craps_engine.registry import REGISTRY, odds_ratio, place_spec, place_unit
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -74,6 +74,31 @@ def _build_zone_odds() -> dict[str, str]:
 #: the exact registry odds. Returned as-is from every :func:`build_board_context`
 #: call because the ratios are immutable craps math, not per-view state.
 _ZONE_ODDS: dict[str, str] = _build_zone_odds()
+
+
+def _build_place_units() -> dict[str, int]:
+    """Precompute every Place zone's advisory whole-dollar unit.
+
+    The optimal Place-bet unit for a box number ($6 on the 6/8, $5 on the
+    5/9 and 4/10) is FIXED craps math straight from the payout ratio's stake
+    leg — see :func:`craps_engine.registry.place_unit`. Like :data:`_ZONE_ODDS`
+    it never depends on the live :class:`GameViewPayload`, so it is computed
+    ONCE at import from the single source of truth and reused unchanged on every
+    :func:`build_board_context` call rather than recomputed per request. Keys
+    mirror the ``place-N`` zone keys so a unit lines up with the felt zone it
+    advises (letting the Q3 template nudge players onto efficient stakes).
+
+    Returns:
+        Zone key ``place-N`` -> its optimal whole-dollar Place unit.
+    """
+    return {f"place-{number}": place_unit(number) for number in _POINT_NUMBERS}
+
+
+#: Static Place zone -> advisory whole-dollar unit, computed once at import from
+#: the exact registry payout ratios. Returned as-is from every
+#: :func:`build_board_context` call because the units are immutable craps math,
+#: not per-view state.
+_PLACE_UNITS: dict[str, int] = _build_place_units()
 
 
 class RollChip(TypedDict):
@@ -151,6 +176,11 @@ class BoardContext(TypedDict):
     starting_bankroll: str
     bankroll: str
     running_net: str
+    #: Signed percent change of the running net vs the starting bankroll (one
+    #: decimal, e.g. ``+13.3%`` / ``-4.0%`` / ``0.0%``). Empty string ``""`` when
+    #: the starting bankroll is non-positive (guards div-by-zero), so the template
+    #: can guard on it.
+    net_pct: str
     phase: str
     point: int | None
     active_bets: list[BetRow]
@@ -164,6 +194,10 @@ class BoardContext(TypedDict):
     #: The same immutable :data:`_ZONE_ODDS` table every call — the ratios are
     #: fixed craps math, not per-view state.
     zone_odds: dict[str, str]
+    #: Static Place zone -> advisory whole-dollar unit (e.g. ``{"place-6": 6}``).
+    #: The same immutable :data:`_PLACE_UNITS` table every call — the units are
+    #: fixed craps math (the payout ratio's stake leg), not per-view state.
+    place_units: dict[str, int]
     #: Summed dollar stake of the WORKING active bets — the money currently
     #: exposed to the dice. Summed as exact :class:`Fraction` before formatting;
     #: non-working bets are excluded; ``"$0"`` when nothing is at risk.
@@ -233,6 +267,26 @@ def _signed_dollars_from_fraction(value: Fraction) -> str:
         return "$0"
     sign = "-" if value < 0 else "+"
     return f"{sign}${_money_body(abs(value))}"
+
+
+def _signed_percent(value: Fraction) -> str:
+    """Render an exact ratio :class:`Fraction` as a signed one-decimal percent.
+
+    Used for the running-net-vs-starting-bankroll figure, where the sign and
+    magnitude of the swing are the salient part (``+13.3%`` / ``-4.0%``). The
+    ratio is computed exactly as a :class:`Fraction` by the caller so no float
+    drift enters the percentage; the lossy ``float`` conversion is deferred to
+    the FINAL format step here (the display boundary), mirroring how
+    :func:`_money_body` only floats at the end.
+
+    Sign handling mirrors :func:`_signed_dollars_from_fraction`: zero renders
+    WITHOUT a sign (``"0.0%"``), and the ``+``/``-`` is built by hand from the
+    magnitude because :class:`Fraction` has no ``:+`` format spec.
+    """
+    if value == 0:
+        return "0.0%"
+    sign = "-" if value < 0 else "+"
+    return f"{sign}{float(abs(value)) * 100:.1f}%"
 
 
 def _signed_dollars(payload: FractionPayload) -> str:
@@ -413,6 +467,14 @@ def build_board_context(
     chip_zones: dict[str, str] = {
         key: f"${_money_body(total)}" for key, total in zone_totals.items()
     }
+    # Running net as a signed percentage of the starting bankroll, computed from
+    # the EXACT serialized Fractions (not the pre-formatted dollar strings) so the
+    # ratio stays lossless until _signed_percent floats it at the display edge.
+    # Guard div-by-zero: a non-positive starting bankroll yields "" (the template
+    # then hides the badge) rather than raising.
+    running_net = _fraction_from_payload(view["running_net"])
+    starting_bankroll = _fraction_from_payload(view["starting_bankroll"])
+    net_pct = "" if starting_bankroll <= 0 else _signed_percent(running_net / starting_bankroll)
     last_outcomes: list[OutcomeRow] = [
         {
             "bet_id": res["bet_id"],
@@ -427,11 +489,13 @@ def build_board_context(
         "starting_bankroll": _dollars(view["starting_bankroll"]),
         "bankroll": _dollars(view["bankroll"]),
         "running_net": _signed_dollars(view["running_net"]),
+        "net_pct": net_pct,
         "phase": view["phase"],
         "point": view["point"],
         "active_bets": active_bets,
         "chip_zones": chip_zones,
         "zone_odds": _ZONE_ODDS,
+        "place_units": _PLACE_UNITS,
         "total_at_risk": total_at_risk,
         "last_roll_net": last_roll_net,
         "recent_rolls": recent_rolls,
