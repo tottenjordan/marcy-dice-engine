@@ -14,25 +14,46 @@ Endpoints (all under ``/api``):
   returns ``PlaceOutcome`` (200 even for a legal-but-refused bet; 404 unknown id;
   422 if the body has neither structured amount nor text).
 - ``POST /api/game/{session_id}/roll`` — roll once; returns ``RollOutcome``.
+
+On TOP of the JSON API this module also serves a server-rendered, HTMX-driven
+browser frontend (see the ``HTML routes`` below). Those routes reuse the SAME
+store and controller funnel; they differ only in returning HTML fragments (built
+by the pure :func:`craps_api.board.build_board_context` + a Jinja2 partial)
+instead of JSON. The JSON ``/api/...`` contract is unchanged.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict
+from pathlib import Path
+from typing import TYPE_CHECKING, Annotated, TypedDict
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from craps_api.board import build_board_context
 from craps_api.session_store import SessionNotFoundError, SessionStore
+from craps_engine.play import coaching_hint
 from craps_engine.specs import BetSpec
 
 if TYPE_CHECKING:
     from craps_engine.play import (
+        GameView,
         GameViewPayload,
         PlaceOutcomePayload,
         PlayController,
         RollOutcomePayload,
     )
+
+# Package-relative locations of the HTML templates and static assets, resolved
+# from this file so they work both under ``uv run pytest`` (source tree) and
+# ``uv run craps-web``. Packaging these non-.py files into a wheel is a deploy
+# (W6) concern; see the report note.
+_PACKAGE_DIR = Path(__file__).parent
+_TEMPLATES_DIR = _PACKAGE_DIR / "templates"
+_STATIC_DIR = _PACKAGE_DIR / "static"
 
 
 class NewGamePayload(TypedDict):
@@ -107,6 +128,56 @@ def _place(controller: PlayController, body: BetRequest) -> PlaceOutcomePayload:
     )
 
 
+def _render_board(
+    templates: Jinja2Templates,
+    request: Request,
+    *,
+    session_id: str,
+    view: GameView,
+    flash: str = "",
+) -> HTMLResponse:
+    """Render the ONE ``_board.html`` partial for a live game snapshot.
+
+    Delegates all formatting to the pure :func:`build_board_context` builder and
+    computes the coaching hint from the LIVE :class:`GameView` (not the payload),
+    so the HTML routes stay thin. Returned as a bare fragment for HTMX swaps. An
+    optional ``flash`` (e.g. a bet-refusal message) is surfaced in the board.
+    """
+    context = build_board_context(
+        view.to_dict(),
+        session_id=session_id,
+        hint=coaching_hint(view),
+        flash=flash,
+    )
+    # Starlette's TemplateResponse wants a plain, mutable ``dict``; a TypedDict is
+    # not assignable to ``dict[str, Any]``, so widen it with a shallow copy.
+    return templates.TemplateResponse(request, "_board.html", dict(context))
+
+
+def _place_from_form(
+    controller: PlayController,
+    *,
+    spec: str | None,
+    amount: int,
+    text: str | None,
+) -> str:
+    """Funnel a form-submitted bet through the controller; return its notice message.
+
+    The common-bet BUTTONS submit a canonical ``spec`` (``pass``, ``dontpass``,
+    ``place 6``, ``take <point>``) plus a shared ``amount`` stake; the free-text
+    box submits raw ``text``. Both flow through the controller's own
+    ``place_bet_text`` funnel, which NEVER raises — an illegal entry becomes an
+    ``ok=false`` outcome whose message is returned here so the caller can flash it
+    in the next board render. An empty submission (no spec and no text) returns an
+    empty string (nothing placed, nothing to say).
+    """
+    if text:
+        return controller.place_bet_text(text).message
+    if spec and spec.strip():
+        return controller.place_bet_text(f"{spec}:{amount}").message
+    return ""
+
+
 def create_app() -> FastAPI:
     """Build the FastAPI app with its own in-memory :class:`SessionStore`.
 
@@ -116,6 +187,9 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Craps Play API")
     store = SessionStore()
     app.state.store = store
+
+    templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     @app.post("/api/game", status_code=201, response_model=None)
     def new_game(body: NewGameRequest) -> NewGamePayload:
@@ -144,5 +218,66 @@ def create_app() -> FastAPI:
     def roll(session_id: str) -> RollOutcomePayload:
         """Roll once and return the :class:`RollOutcome` (404 if unknown id)."""
         return _controller_or_404(store, session_id).roll().to_dict()
+
+    # --- HTML routes (server-rendered HTMX frontend) ------------------------
+    #
+    # ``GET /`` serves the new-game FORM plus an empty placeholder board (no
+    # auto-created game), so a first visit costs nothing and the seed/stake are
+    # chosen up front. Starting a game swaps the placeholder for the real board
+    # partial; every subsequent bet/roll swaps that same ``#board`` fragment.
+    # Session identity is carried IN THE BOARD HTML via the embedded action URLs
+    # (``/game/{id}/bet`` and ``/game/{id}/roll``) — no cookie needed.
+
+    @app.get("/", response_class=HTMLResponse)
+    def index(request: Request) -> HTMLResponse:
+        """Serve the full page: new-game form + empty placeholder board."""
+        return templates.TemplateResponse(request, "index.html", {})
+
+    @app.post("/game", response_class=HTMLResponse)
+    def start_game(
+        request: Request,
+        starting_bankroll: Annotated[int, Form()] = _DEFAULT_STARTING_BANKROLL,
+        max_rolls: Annotated[int, Form()] = _DEFAULT_MAX_ROLLS,
+        seed: Annotated[int | None, Form()] = None,
+    ) -> HTMLResponse:
+        """Create a game from the form and return its come-out board partial.
+
+        The web form intentionally exposes only seed/stake/max-rolls; win-goal
+        and loss-limit fall to the store defaults (the JSON ``POST /api/game``
+        route supports the full knob set for programmatic clients).
+        """
+        session_id, controller = store.create(
+            starting_bankroll=starting_bankroll,
+            max_rolls=max_rolls,
+            seed=seed,
+        )
+        return _render_board(templates, request, session_id=session_id, view=controller.snapshot())
+
+    @app.post("/game/{session_id}/bet", response_class=HTMLResponse)
+    def place_bet_html(
+        request: Request,
+        session_id: str,
+        spec: Annotated[str | None, Form()] = None,
+        amount: Annotated[int, Form()] = 0,
+        text: Annotated[str | None, Form()] = None,
+    ) -> HTMLResponse:
+        """Place a bet (button spec OR free text) and return the board partial.
+
+        The controller's outcome message (a confirmation, or the reason a
+        legal-but-refused bet was rejected) is flashed in the board so a refusal
+        is visible instead of silently vanishing.
+        """
+        controller = _controller_or_404(store, session_id)
+        flash = _place_from_form(controller, spec=spec, amount=amount, text=text)
+        return _render_board(
+            templates, request, session_id=session_id, view=controller.snapshot(), flash=flash
+        )
+
+    @app.post("/game/{session_id}/roll", response_class=HTMLResponse)
+    def roll_html(request: Request, session_id: str) -> HTMLResponse:
+        """Roll once and return the updated board partial (404 if unknown id)."""
+        controller = _controller_or_404(store, session_id)
+        controller.roll()
+        return _render_board(templates, request, session_id=session_id, view=controller.snapshot())
 
     return app

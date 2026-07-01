@@ -1,0 +1,104 @@
+{#
+  The ONE board partial. Returned RAW by every HTMX start/bet/roll route, so a
+  single board rendering is used for every swap. The full page (index.html) does
+  NOT include this partial — it hand-writes its own empty-state placeholder for
+  #board, which the first "start game" swaps out for this partial. Session
+  identity travels in the HTMX action URLs below (/game/{{ session_id }}/...),
+  so no cookie is needed.
+#}
+<div id="board" class="board">
+  {% if game_over %}
+  <div class="banner banner-over">
+    Game over — {{ game_over_reason }}. Start a new game above to play again.
+  </div>
+  {% endif %}
+
+  <div class="stats">
+    <div class="stat">
+      <span class="label">Bankroll</span>
+      <span class="value" id="bankroll">{{ bankroll }}</span>
+    </div>
+    <div class="stat">
+      <span class="label">Net</span>
+      <span class="value">{{ running_net }}</span>
+    </div>
+    <div class="stat">
+      <span class="label">Phase</span>
+      <span class="value">{{ phase }}{% if point is not none %} (point {{ point }}){% endif %}</span>
+    </div>
+    <div class="stat">
+      <span class="label">Rolls used</span>
+      <span class="value">{{ rolls_used }} ({{ rolls_left }} left)</span>
+    </div>
+  </div>
+
+  <div class="dice" id="dice">
+    {% if has_last_roll %}
+    <span class="die">{{ die1_face }}</span>
+    <span class="die">{{ die2_face }}</span>
+    <span class="total">= {{ total }}</span>
+    {% else %}
+    <span class="muted">No roll yet — place a bet and roll.</span>
+    {% endif %}
+  </div>
+
+  {% if flash %}
+  <div class="flash" id="flash">{{ flash }}</div>
+  {% endif %}
+
+  <div class="hint" id="hint">{{ hint }}</div>
+
+  {% if last_outcomes %}
+  <ul class="outcomes">
+    {% for res in last_outcomes %}
+    <li>{{ res.bet_id }}: {{ res.status }} {{ res.delta }}{% if res.note %} — {{ res.note }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <div class="bets">
+    <h3>Active bets</h3>
+    {% if active_bets %}
+    <ul>
+      {% for bet in active_bets %}
+      <li>{{ bet.type }} {{ bet.amount }}{% if not bet.working %} (off){% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No active bets.</p>
+    {% endif %}
+  </div>
+
+  {% if not game_over %}
+  <form class="controls"
+        hx-post="/game/{{ session_id }}/bet"
+        hx-target="#board"
+        hx-swap="outerHTML">
+    <label>Stake <input type="number" name="amount" value="10" min="1"></label>
+    <div class="buttons">
+      <button type="submit" name="spec" value="pass">Pass</button>
+      <button type="submit" name="spec" value="dontpass">Don't Pass</button>
+      <button type="submit" name="spec" value="place 6">Place 6</button>
+      <button type="submit" name="spec" value="place 8">Place 8</button>
+      {% if odds_available %}
+      <button type="submit" name="spec" value="take {{ point }}">Take Odds</button>
+      {% endif %}
+    </div>
+  </form>
+
+  <form class="freetext"
+        hx-post="/game/{{ session_id }}/bet"
+        hx-target="#board"
+        hx-swap="outerHTML">
+    <label>Free-text bet <input type="text" name="text" placeholder="place 6:6"></label>
+    <button type="submit">Place</button>
+  </form>
+
+  <form class="roll"
+        hx-post="/game/{{ session_id }}/roll"
+        hx-target="#board"
+        hx-swap="outerHTML">
+    <button type="submit" class="roll-btn">Roll the dice</button>
+  </form>
+  {% endif %}
+</div>

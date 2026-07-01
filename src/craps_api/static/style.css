@@ -1,0 +1,159 @@
+/* Minimal, clean styling for the craps play board. No frameworks. */
+
+:root {
+  --ink: #12203a;
+  --muted: #6b7280;
+  --accent: #1d4ed8;
+  --win: #15803d;
+  --lose: #b91c1c;
+  --card: #ffffff;
+  --line: #d1d5db;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  color: var(--ink);
+  background: #f3f4f6;
+  line-height: 1.5;
+}
+
+header {
+  background: #0f766e;
+  color: #fff;
+  padding: 1rem 1.5rem;
+}
+
+header h1 { margin: 0; font-size: 1.4rem; }
+.tagline { margin: 0.25rem 0 0; opacity: 0.9; font-size: 0.9rem; }
+
+main {
+  max-width: 640px;
+  margin: 1.5rem auto;
+  padding: 0 1rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+h2, h3 { margin: 0 0 0.5rem; }
+
+form {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+input {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  margin-top: 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.95rem;
+}
+
+button:hover { filter: brightness(1.08); }
+
+.board {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.board.placeholder { text-align: center; }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+}
+
+.stat .label { color: var(--muted); font-size: 0.85rem; }
+.stat .value { font-weight: 700; }
+
+.dice {
+  text-align: center;
+  font-size: 3rem;
+}
+
+.dice .die { margin: 0 0.25rem; }
+.dice .total { font-size: 1.5rem; vertical-align: middle; color: var(--muted); }
+
+.hint {
+  background: #eff6ff;
+  border-left: 4px solid var(--accent);
+  padding: 0.6rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+.flash {
+  background: #fffbeb;
+  border-left: 4px solid #d97706;
+  padding: 0.6rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  color: #92400e;
+}
+
+.outcomes { margin: 0; padding-left: 1.2rem; }
+
+.banner {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.banner-over {
+  background: #fef2f2;
+  color: var(--lose);
+  border: 1px solid #fecaca;
+}
+
+.controls .buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.roll-btn {
+  background: var(--win);
+  width: 100%;
+  font-size: 1.05rem;
+  padding: 0.7rem;
+}
+
+.muted { color: var(--muted); }

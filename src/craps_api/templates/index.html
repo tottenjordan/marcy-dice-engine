@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Craps — Play</title>
+  {# HTMX loaded from CDN (v2.0.4); no bundler, no custom JS beyond hx-* attrs. #}
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Craps — Play Mode</h1>
+    <p class="tagline">Start a game, place bets, and roll — the board updates without a page reload.</p>
+  </header>
+
+  <main>
+    <form class="new-game"
+          hx-post="/game"
+          hx-target="#board"
+          hx-swap="outerHTML">
+      <h2>New game</h2>
+      <label>Seed (optional)
+        <input type="number" name="seed" placeholder="e.g. 42">
+      </label>
+      <label>Starting stake
+        <input type="number" name="starting_bankroll" value="300" min="1">
+      </label>
+      <label>Max rolls
+        <input type="number" name="max_rolls" value="100" min="1">
+      </label>
+      <button type="submit">Start game</button>
+    </form>
+
+    {# Placeholder board; replaced (outerHTML) by the real board partial on start. #}
+    <div id="board" class="board placeholder">
+      <p class="muted">No game yet. Start a new game to deal the come-out.</p>
+    </div>
+  </main>
+</body>
+</html>
