@@ -36,7 +36,7 @@ from pydantic import BaseModel
 from craps_api.board import build_board_context
 from craps_api.session_store import SessionNotFoundError, SessionStore
 from craps_engine.play import coaching_hint
-from craps_engine.registry import snap_to_place_unit
+from craps_engine.registry import snap_to_odds_unit, snap_to_place_unit
 from craps_engine.specs import BetSpec, parse_bet_spec
 
 if TYPE_CHECKING:
@@ -179,28 +179,41 @@ def _place_from_form(
     if text:
         return controller.place_bet_text(text).message
     if spec and spec.strip():
-        stake = _snap_place_stake(spec, amount)
+        stake = _snap_stake(spec, amount)
         return controller.place_bet_text(f"{spec}:{stake}").message
     return ""
 
 
-def _snap_place_stake(spec: str, amount: int) -> int:
-    """Round a Place-zone button's shared stake to that number's optimal unit.
+def _snap_stake(spec: str, amount: int) -> int:
+    """Round a numbered-zone button's shared stake to that bet's optimal unit.
 
     The felt places bets from ONE shared stake box, so a raw ``$10`` on the 6
-    would pay a fractional ``$11.67``. For a ``place N`` spec, snap the stake to
-    the nearest whole multiple of :func:`~craps_engine.registry.place_unit`
-    (6/8 -> $6s, 4/5/9/10 -> $5s) so the payout lands in whole dollars. Any
-    non-place spec -- or an unparseable one, which the controller will flash as an
-    error -- is returned unchanged.
+    would pay a fractional ``$11.67`` (and odds have their own whole-dollar units).
+    Snap the stake to the nearest whole multiple of the relevant registry unit so
+    the payout lands in whole dollars:
+
+    * ``place N`` -> :func:`~craps_engine.registry.snap_to_place_unit`
+      (6/8 -> $6s, 4/5/9/10 -> $5s).
+    * ``take N`` / ``lay N`` -> :func:`~craps_engine.registry.snap_to_odds_unit`
+      (true-odds stake leg: take 6/8 -> $5s, lay 6/8 -> $6s, take 4/10 -> $1s).
+
+    Any other spec (line/come bets) -- or an unparseable one, which the controller
+    will flash as an error -- is returned unchanged. The parser has already
+    validated the number for numbered kinds, so the registry snappers never see a
+    non-point number.
     """
     try:
         parsed = parse_bet_spec(f"{spec}:{amount}")
     except ValueError:
         return amount
-    if parsed.kind == "place" and parsed.number is not None:
+    if parsed.number is None:
+        # Bare line/come bet (pass/dontpass/come/dontcome): no per-number unit.
+        return amount
+    if parsed.kind == "place":
         return snap_to_place_unit(parsed.number, amount)
-    return amount
+    # The only other numbered kinds are take/lay odds (specs._NUMBERED_KINDS), so
+    # anything with a number that is not a place bet is an odds bet.
+    return snap_to_odds_unit(take=parsed.kind == "take", number=parsed.number, amount=amount)
 
 
 def create_app() -> FastAPI:  # noqa: C901 (a route-registration factory: each route is a closure over ``store``/``templates``)

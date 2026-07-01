@@ -21,7 +21,7 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import TYPE_CHECKING, TypedDict
 
-from craps_engine.registry import REGISTRY, odds_ratio, place_spec, place_unit
+from craps_engine.registry import REGISTRY, odds_ratio, odds_unit, place_spec, place_unit
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -99,6 +99,34 @@ def _build_place_units() -> dict[str, int]:
 #: :func:`build_board_context` call because the units are immutable craps math,
 #: not per-view state.
 _PLACE_UNITS: dict[str, int] = _build_place_units()
+
+
+def _build_odds_units() -> dict[str, int]:
+    """Precompute every Free-Odds zone's advisory whole-dollar unit.
+
+    The optimal odds unit is the true-odds ratio's stake leg (take on the 6/8 in
+    $5s, lay on the 6/8 in $6s, and so on) -- see
+    :func:`craps_engine.registry.odds_unit`. Like :data:`_PLACE_UNITS` it is FIXED
+    craps math, independent of the live :class:`GameViewPayload`, so it is computed
+    ONCE at import and reused unchanged on every :func:`build_board_context` call.
+    Keys mirror the ``odds-N`` (take) and ``lay-N`` chip/zone keys so a unit lines
+    up with the felt zone it advises.
+
+    Returns:
+        Zone key ``odds-N``/``lay-N`` -> its optimal whole-dollar odds unit.
+    """
+    units: dict[str, int] = {}
+    for number in _POINT_NUMBERS:
+        units[f"odds-{number}"] = odds_unit(take=True, number=number)
+        units[f"lay-{number}"] = odds_unit(take=False, number=number)
+    return units
+
+
+#: Static Free-Odds zone -> advisory whole-dollar unit, computed once at import
+#: from the exact true-odds ratios. Returned as-is from every
+#: :func:`build_board_context` call because the units are immutable craps math,
+#: not per-view state. Covers both take (``odds-N``) and lay (``lay-N``) zones.
+_ODDS_UNITS: dict[str, int] = _build_odds_units()
 
 
 class RollChip(TypedDict):
@@ -205,6 +233,11 @@ class BoardContext(TypedDict):
     #: The same immutable :data:`_PLACE_UNITS` table every call — the units are
     #: fixed craps math (the payout ratio's stake leg), not per-view state.
     place_units: dict[str, int]
+    #: Static Free-Odds zone -> advisory whole-dollar unit (e.g.
+    #: ``{"odds-6": 5, "lay-6": 6}``). The same immutable :data:`_ODDS_UNITS` table
+    #: every call — the units are fixed true-odds math (the ratio's stake leg), not
+    #: per-view state. Covers both take (``odds-N``) and lay (``lay-N``) zones.
+    odds_units: dict[str, int]
     #: Summed dollar stake of ALL active bets — the money on the felt, i.e. the
     #: wallet model's "on table" total. Summed as exact :class:`Fraction` before
     #: formatting; every active stake is counted so ``bankroll + total_at_risk``
@@ -529,6 +562,7 @@ def build_board_context(
         "chip_zones": chip_zones,
         "zone_odds": _ZONE_ODDS,
         "place_units": _PLACE_UNITS,
+        "odds_units": _ODDS_UNITS,
         "total_at_risk": total_at_risk,
         "last_roll_net": last_roll_net,
         "recent_rolls": recent_rolls,

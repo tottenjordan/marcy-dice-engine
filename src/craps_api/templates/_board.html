@@ -108,13 +108,15 @@
   {% endmacro %}
 
   {#
-    Place-zone variant of pays(): folds the advisory optimal whole-dollar unit
-    (place_units, from board.py) INTO the ratio tooltip so a Place zone nudges the
-    player onto an exact-payout stake (e.g. "Best in $6 units — pays 7:6"). Falls
-    back to the plain pays() output when either the unit or ratio is missing.
+    Unit-folding variant of pays(): folds an advisory optimal whole-dollar unit
+    (from a units map like place_units / odds_units in board.py) INTO the ratio
+    tooltip so a zone nudges the player onto an exact-payout stake (e.g. "Best in
+    $6 units — pays 7:6"). Shared by the Place zones AND the Take/Lay odds zones —
+    each passes its own units map. Falls back to the plain pays() output when
+    either the unit or the ratio is missing.
   #}
-  {% macro place_pays(key, label) %}
-    {%- if place_units.get(key) and zone_odds.get(key) -%}aria-label="{{ label }} — best in ${{ place_units[key] }} units, pays {{ zone_odds[key] }}" title="Best in ${{ place_units[key] }} units — pays {{ zone_odds[key] }}"{%- else -%}{{ pays(key, label) }}{%- endif -%}
+  {% macro unit_pays(units, key, label) %}
+    {%- if units.get(key) and zone_odds.get(key) -%}aria-label="{{ label }} — best in ${{ units[key] }} units, pays {{ zone_odds[key] }}" title="Best in ${{ units[key] }} units — pays {{ zone_odds[key] }}"{%- else -%}{{ pays(key, label) }}{%- endif -%}
   {% endmacro %}
 
   <div class="felt" aria-label="Craps table">
@@ -122,7 +124,7 @@
     <div class="felt-boxes">
       {% for n in [4, 5, 6, 8, 9, 10] %}
       <button class="zone zone-place{% if point == n %} zone-point{% endif %}" type="button"
-              {{ place_pays('place-' ~ n, 'Place ' ~ n) }}
+              {{ unit_pays(place_units, 'place-' ~ n, 'Place ' ~ n) }}
               hx-post="/game/{{ session_id }}/bet"
               hx-vals='{"spec": "place {{ n }}"}'
               hx-include="#stake"
@@ -191,7 +193,7 @@
       #}
       {% if odds_available %}
       <button class="zone zone-lay" type="button"
-              {{ pays('lay-' ~ point, 'Lay Odds on ' ~ point) }}
+              {{ unit_pays(odds_units, 'lay-' ~ point, 'Lay Odds on ' ~ point) }}
               hx-post="/game/{{ session_id }}/bet"
               hx-vals='{"spec": "lay {{ point }}"}'
               hx-include="#stake"
@@ -218,7 +220,7 @@
       {# Take-odds slot: same puck-point keying + limitation as the lay slot above. #}
       {% if odds_available %}
       <button class="zone zone-odds" type="button"
-              {{ pays('odds-' ~ point, 'Take Odds on ' ~ point) }}
+              {{ unit_pays(odds_units, 'odds-' ~ point, 'Take Odds on ' ~ point) }}
               hx-post="/game/{{ session_id }}/bet"
               hx-vals='{"spec": "take {{ point }}"}'
               hx-include="#stake"

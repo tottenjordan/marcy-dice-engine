@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from craps_api.app import create_app
 from craps_api.board import _DIE_FACES, _zone_key, build_board_context
 from craps_engine.money import serialize_fraction
-from craps_engine.registry import place_unit
+from craps_engine.registry import odds_ratio, odds_unit, place_unit, snap_to_odds_unit
 
 
 def _client() -> TestClient:
@@ -390,6 +390,25 @@ def test_place_units_are_exact_static_units() -> None:
     assert pu["place-10"] == 5
 
 
+def test_odds_units_are_exact_static_units() -> None:
+    ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
+    ou = ctx["odds_units"]
+    # Take odds: stake leg of the true odds (4/10 -> 1, 5/9 -> 2, 6/8 -> 5).
+    assert ou["odds-4"] == 1
+    assert ou["odds-10"] == 1
+    assert ou["odds-5"] == 2
+    assert ou["odds-9"] == 2
+    assert ou["odds-6"] == 5
+    assert ou["odds-8"] == 5
+    # Lay odds: stake leg of the inverse odds (4/10 -> 2, 5/9 -> 3, 6/8 -> 6).
+    assert ou["lay-4"] == 2
+    assert ou["lay-10"] == 2
+    assert ou["lay-5"] == 3
+    assert ou["lay-9"] == 3
+    assert ou["lay-6"] == 6
+    assert ou["lay-8"] == 6
+
+
 def test_net_pct_positive() -> None:
     payload = _base_payload(
         running_net=serialize_fraction(Fraction(40), as_percent=False),
@@ -624,13 +643,49 @@ def test_unparseable_place_spec_is_not_snapped_and_flashes() -> None:
 
 
 def test_non_place_button_stake_is_not_snapped() -> None:
-    """Snapping is Place-only: a Pass Line stake is placed exactly as typed."""
+    """Snapping is Place/odds-only: a Pass Line stake is placed exactly as typed."""
     client = _client()
     sid, _ = _start_game(client, seed=1, starting_bankroll=300)
     client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 13})
     snap = client.get(f"/api/game/{sid}").json()
     pass_row = next(b for b in snap["active_bets"] if b["type"] == "PassLine")
     assert _amount_dollars(pass_row["amount"]) == 13
+
+
+def _odds_amount(client: TestClient, sid: str, bet_type: str) -> int:
+    """Whole-dollar stake of the single active odds bet of ``bet_type`` (via JSON)."""
+    snap = client.get(f"/api/game/{sid}").json()
+    row = next(b for b in snap["active_bets"] if b["type"] == bet_type)
+    return _amount_dollars(row["amount"])
+
+
+def test_take_odds_button_snaps_stake_to_odds_unit() -> None:
+    """A felt take-odds stake snaps to the point's whole-dollar odds unit.
+
+    The Pass Line flat backing the odds is placed during the point (the engine
+    permits it), so the setup is deterministic regardless of which point the seed
+    establishes; the expected stake is derived from the same registry snapper.
+    """
+    client = _client()
+    sid, _ = _start_game(client, seed=5, starting_bankroll=1000)
+    point = _establish_point_html(client, sid)
+    client.post(f"/game/{sid}/bet", data={"spec": "pass", "amount": 10})
+    client.post(f"/game/{sid}/bet", data={"spec": f"take {point}", "amount": 7})
+    placed = _odds_amount(client, sid, "TakeOdds")
+    assert placed == snap_to_odds_unit(take=True, number=point, amount=7)
+    assert placed % odds_unit(take=True, number=point) == 0
+
+
+def test_lay_odds_button_snaps_stake_to_odds_unit() -> None:
+    """A felt lay-odds stake snaps to the point's whole-dollar (inverse) odds unit."""
+    client = _client()
+    sid, _ = _start_game(client, seed=5, starting_bankroll=1000)
+    point = _establish_point_html(client, sid)
+    client.post(f"/game/{sid}/bet", data={"spec": "dontpass", "amount": 10})
+    client.post(f"/game/{sid}/bet", data={"spec": f"lay {point}", "amount": 7})
+    placed = _odds_amount(client, sid, "LayOdds")
+    assert placed == snap_to_odds_unit(take=False, number=point, amount=7)
+    assert placed % odds_unit(take=False, number=point) == 0
 
 
 def test_press_snaps_grown_place_stake_to_unit() -> None:
@@ -1014,6 +1069,26 @@ def test_place_zone_tooltip_folds_advisory_unit() -> None:
     assert 'title="Best in $5 units — pays 9:5"' in html
     # The advisory unit is folded into the place aria-label too.
     assert "best in $6 units, pays 7:6" in html.lower()
+
+
+def test_odds_zone_tooltip_folds_advisory_unit() -> None:
+    """Each Take/Lay odds zone's tooltip advises its optimal odds unit + true odds.
+
+    Mirrors the Place zone tooltip: once a point is on, the odds slots read through
+    the unit-folded "Best in $N units — pays R" form. Units/ratios are derived from
+    the registry so the assertion holds for whichever point the seed establishes.
+    """
+    client = _client()
+    sid, _ = _start_game(client, seed=5, starting_bankroll=1000)
+    point = _establish_point_html(client, sid)
+    # Re-render the point-on board without mutating state (empty bet is a no-op).
+    html = client.post(f"/game/{sid}/bet", data={}).text
+    take_unit = odds_unit(take=True, number=point)
+    lay_unit = odds_unit(take=False, number=point)
+    take_ratio = odds_ratio(take=True, number=point)
+    lay_ratio = odds_ratio(take=False, number=point)
+    assert f'title="Best in ${take_unit} units — pays {take_ratio.win}:{take_ratio.stake}"' in html
+    assert f'title="Best in ${lay_unit} units — pays {lay_ratio.win}:{lay_ratio.stake}"' in html
 
 
 def test_felt_shows_static_unit_tip() -> None:

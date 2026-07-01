@@ -17,8 +17,10 @@ from craps_engine.registry import (
     TOTAL_PROBABILITY,
     BetSpec,
     odds_ratio,
+    odds_unit,
     place_spec,
     place_unit,
+    snap_to_odds_unit,
     snap_to_place_unit,
 )
 
@@ -108,6 +110,58 @@ def test_snap_to_place_unit_floors_at_one_unit() -> None:
 def test_snap_to_place_unit_rejects_invalid() -> None:
     with pytest.raises(ValueError, match="place"):
         snap_to_place_unit(7, 10)
+
+
+def test_odds_unit_exact() -> None:
+    # The optimal whole-dollar odds unit is the true-odds ratio's stake leg, so a
+    # stake that is a multiple of it always pays whole dollars. Take odds pay the
+    # true odds (4/10 -> 2:1, 5/9 -> 3:2, 6/8 -> 6:5); lay odds the inverse.
+    assert odds_unit(take=True, number=4) == 1
+    assert odds_unit(take=True, number=10) == 1
+    assert odds_unit(take=True, number=5) == 2
+    assert odds_unit(take=True, number=9) == 2
+    assert odds_unit(take=True, number=6) == 5
+    assert odds_unit(take=True, number=8) == 5
+    # Lay odds are the inverse ratio, so the stake leg is the win leg of take.
+    assert odds_unit(take=False, number=4) == 2
+    assert odds_unit(take=False, number=10) == 2
+    assert odds_unit(take=False, number=5) == 3
+    assert odds_unit(take=False, number=9) == 3
+    assert odds_unit(take=False, number=6) == 6
+    assert odds_unit(take=False, number=8) == 6
+
+
+def test_odds_unit_rejects_invalid() -> None:
+    with pytest.raises(ValueError, match="point"):
+        odds_unit(take=True, number=7)
+
+
+def test_snap_to_odds_unit_rounds_to_nearest_multiple() -> None:
+    # 6/8 take odds snap to $5 multiples; 5/9 to $2; 4/10 to $1 (a no-op).
+    assert snap_to_odds_unit(take=True, number=6, amount=7) == 5
+    assert snap_to_odds_unit(take=True, number=6, amount=8) == 10
+    assert snap_to_odds_unit(take=True, number=5, amount=7) == 8
+    assert snap_to_odds_unit(take=True, number=4, amount=7) == 7
+    # Lay odds snap to their inverse-ratio stake leg (6/8 -> $6, 5/9 -> $3).
+    assert snap_to_odds_unit(take=False, number=6, amount=7) == 6
+    assert snap_to_odds_unit(take=False, number=5, amount=7) == 6
+
+
+def test_snap_to_odds_unit_ties_round_up() -> None:
+    # Exactly halfway between two multiples rounds UP to the larger.
+    assert snap_to_odds_unit(take=True, number=5, amount=1) == 2  # floors at one unit
+    assert snap_to_odds_unit(take=True, number=6, amount=15) == 15  # exact multiple stays
+
+
+def test_snap_to_odds_unit_floors_at_one_unit() -> None:
+    # A positive stake below one unit never snaps to $0.
+    assert snap_to_odds_unit(take=True, number=6, amount=1) == 5
+    assert snap_to_odds_unit(take=False, number=6, amount=1) == 6
+
+
+def test_snap_to_odds_unit_rejects_invalid() -> None:
+    with pytest.raises(ValueError, match="point"):
+        snap_to_odds_unit(take=True, number=7, amount=10)
 
 
 def test_place_spec_keys() -> None:

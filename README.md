@@ -139,7 +139,13 @@ that it carries a set of play-mode conveniences:
   behind the Pass Line (and Lay Odds behind Don't Pass) to back your flat bet at
   zero house edge. These are true "behind the line" wagers: they require a
   matching flat bet and are capped at the standard **3-4-5×** table max (3× behind
-  4/10, 4× behind 5/9, 5× behind 6/8) — naked or over-max odds are refused.
+  4/10, 4× behind 5/9, 5× behind 6/8) — naked or over-max odds are refused. Odds
+  carry the same **advisory-unit** treatment as Place bets: the true-odds payout
+  only lands in whole dollars on the odds ratio's stake leg (take **6 / 8** in
+  **$5** units, take **5 / 9** in **$2**, take **4 / 10** in **$1**; lay is the
+  inverse — **$6 / $3 / $2**), so clicking a Take/Lay slot snaps the shared stake
+  to that unit and each slot's tooltip advises it. (The JSON API still accepts any
+  exact amount within the table max.)
 - **Net percentage** — the running Net dollar figure is shown alongside a Net %
   of the starting bankroll.
 - **Wide-screen no-scroll dashboard** — on wide viewports (`min-width: 1024px`)
@@ -264,7 +270,7 @@ src/craps_tui/      Textual UI + golden-verify (the only place textual/I/O live)
   viewmodel.py   pure parse/format seam over the engine
   app.py         Textual App (Analyze + Verify actions)
   __main__.py    console entry point (craps-tui)
-src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — advisory place-bet units, point-ON puck, net %, wide dashboard (only place web I/O lives)
+src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — advisory place-bet + free-odds units, point-ON puck, net %, wide dashboard (only place web I/O lives)
   app.py            FastAPI factory: JSON /api routes + HTMX HTML routes
   session_store.py  in-memory session store over PlayController
   board.py          pure board-context builder for the HTML partial

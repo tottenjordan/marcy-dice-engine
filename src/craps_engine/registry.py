@@ -230,6 +230,23 @@ def place_unit(number: int) -> int:
     return place_spec(number).payout.stake
 
 
+def _snap_to_unit(unit: int, amount: int) -> int:
+    """Round ``amount`` to the nearest whole multiple of ``unit`` (ties round up).
+
+    Shared rounding rule behind :func:`snap_to_place_unit` and
+    :func:`snap_to_odds_unit`: a target at or below one unit floors at one unit
+    (so a positive stake is never silently dropped to $0), and an exact halfway
+    target rounds UP to the larger multiple. ``unit`` is assumed already validated
+    by the caller (both public snappers derive it from a validating helper).
+    """
+    if amount <= unit:
+        return unit
+    quotient, remainder = divmod(amount, unit)
+    if remainder * 2 >= unit:  # round half up to the larger multiple
+        quotient += 1
+    return quotient * unit
+
+
 def snap_to_place_unit(number: int, amount: int) -> int:
     """Round a Place stake on ``number`` to the nearest whole multiple of its unit.
 
@@ -250,13 +267,7 @@ def snap_to_place_unit(number: int, amount: int) -> int:
     amount. Delegates validation to :func:`place_unit`, so non-place numbers raise
     :class:`ValueError`.
     """
-    unit = place_unit(number)
-    if amount <= unit:
-        return unit
-    quotient, remainder = divmod(amount, unit)
-    if remainder * 2 >= unit:  # round half up to the larger multiple
-        quotient += 1
-    return quotient * unit
+    return _snap_to_unit(place_unit(number), amount)
 
 
 # ---------------------------------------------------------------------------
@@ -296,3 +307,39 @@ def odds_ratio(*, take: bool, number: int) -> RatioOdds:
         return take_odds
     # Lay odds are the inverse ratio: swap win and stake legs.
     return RatioOdds(take_odds.stake, take_odds.win)
+
+
+def odds_unit(*, take: bool, number: int) -> int:
+    """Smallest whole-dollar Free-Odds stake on ``number`` that pays whole dollars.
+
+    Like :func:`place_unit`, the optimal advisory unit is the payout ratio's
+    *stake leg*: a Free-Odds wager returns whole dollars only when it is a whole
+    multiple of that leg (any smaller/non-multiple stake pushes the exact-true-odds
+    payout off a whole-dollar boundary and the casino rounds it down). Because odds
+    pay the exact true odds, ``take`` and ``lay`` have different units:
+
+    * take (Pass side): 4/10 -> 1 (2:1), 5/9 -> 2 (3:2), 6/8 -> 5 (6:5)
+    * lay  (Don't side): 4/10 -> 2 (1:2), 5/9 -> 3 (2:3), 6/8 -> 6 (5:6)
+
+    Returning it lets the UI nudge players onto efficient odds stakes. Delegates
+    validation to :func:`odds_ratio`, so non-point numbers raise :class:`ValueError`.
+    """
+    return odds_ratio(take=take, number=number).stake
+
+
+def snap_to_odds_unit(*, take: bool, number: int, amount: int) -> int:
+    """Round a Free-Odds stake to the nearest whole multiple of its unit.
+
+    The odds counterpart of :func:`snap_to_place_unit`: snap ``amount`` to the
+    closest whole-dollar multiple of :func:`odds_unit` for this ``take``/``number``
+    so the true-odds payout lands in whole dollars (e.g. take odds on the 6/8 snap
+    to $5 multiples, lay odds on the 6/8 to $6 multiples; take odds on the 4/10 are
+    already whole for any stake, so snapping is a no-op there). Ties round UP and a
+    positive stake never snaps below one unit, matching the place snapper.
+
+    A play-mode convenience for the web felt's shared stake box; the engine's own
+    :meth:`~craps_engine.play.PlayController.place_bet` still accepts any positive
+    amount (subject to the 3-4-5x table maximum enforced at placement). Delegates
+    validation to :func:`odds_unit`, so non-point numbers raise :class:`ValueError`.
+    """
+    return _snap_to_unit(odds_unit(take=take, number=number), amount)
