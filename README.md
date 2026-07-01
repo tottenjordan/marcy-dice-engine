@@ -1,5 +1,7 @@
 # marcy-dice-engine
 
+![A live craps table with dice mid-roll](docs/images/banner.jpeg)
+
 A **craps betting-strategy analyzer & practice simulator** — built to learn the
 exact odds, payouts, and house-edge mechanics of combined (hedged) craps
 strategies, then *play them out*: run deterministic sessions, race strategies
