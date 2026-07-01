@@ -155,6 +155,36 @@ def test_max_rolls_game_over() -> None:
     assert view.rolls_left == 0
 
 
+def test_uncapped_never_ends_by_rolls() -> None:
+    """With max_rolls=None (and no reachable bust/goal), the game never ends by rolls.
+
+    Drive 200+ come-out sevens (which just win even money): with no cap the game
+    stays live no matter how many rolls elapse. RandomDice is avoided so the
+    trajectory is fully deterministic.
+    """
+    ctrl = PlayController(
+        ScriptedDice([(3, 4)] * 250),
+        _config(max_rolls=None),
+    )
+    for _ in range(250):
+        ctrl.place_bet_text("pass:10")
+        outcome = ctrl.roll()
+        assert outcome.ok is True
+        assert outcome.view.game_over is False
+    view = ctrl.snapshot()
+    assert view.game_over is False
+    assert view.rolls_used == 250
+
+
+def test_uncapped_rolls_left_is_none() -> None:
+    """When uncapped, rolls_left is None; when capped, it is an int."""
+    uncapped = PlayController(ScriptedDice([]), _config(max_rolls=None))
+    assert uncapped.snapshot().rolls_left is None
+
+    capped = PlayController(ScriptedDice([]), _config(max_rolls=10))
+    assert capped.snapshot().rolls_left == 10
+
+
 # --- odds legality ----------------------------------------------------------
 
 

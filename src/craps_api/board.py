@@ -90,7 +90,9 @@ class BoardContext(TypedDict):
     total: int
     last_outcomes: list[OutcomeRow]
     rolls_used: int
-    rolls_left: int
+    #: Rolls remaining before the max-rolls cap, or ``None`` when uncapped
+    #: (interactive play with ``max_rolls=None``).
+    rolls_left: int | None
     game_over: bool
     game_over_reason: str | None
     odds_available: bool

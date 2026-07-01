@@ -81,8 +81,10 @@ class SessionConfig:
 
     #: Bankroll the shooter starts with (also seeds peak/trough).
     starting_bankroll: Fraction
-    #: Hard cap on the number of rolls executed.
-    max_rolls: int
+    #: Hard cap on the number of rolls executed; ``None`` means uncapped
+    #: (interactive play only). Batch runners MUST pass an int -- ``run_session``
+    #: fails fast on ``None``.
+    max_rolls: int | None = None
     #: Bankroll at/above which the session stops a winner, or ``None`` for none.
     win_goal: Fraction | None = None
     #: Bankroll floor; reaching it (``<=``) busts the session.
@@ -227,7 +229,18 @@ def run_session(dice: Dice, strategy: Strategy, config: SessionConfig) -> Sessio
     starting bankroll so they span the full trajectory; ``history`` collects only
     post-roll bankrolls. Termination precedence is BUST FIRST, then goal; the loop
     never exceeds ``config.max_rolls`` rolls.
+
+    Fails fast with ``ValueError`` when ``config.max_rolls is None``: an uncapped
+    config is legal for interactive play only, and a batch run without a cap would
+    loop forever. Interactive play uses :class:`~craps_engine.play.PlayController`.
     """
+    if config.max_rolls is None:
+        msg = (
+            "run_session requires a finite max_rolls; None (uncapped) is for "
+            "interactive play only and would loop forever in a batch run"
+        )
+        raise ValueError(msg)
+
     table = Table(config.starting_bankroll)
 
     # Seed peak/trough with the start so the trajectory INCLUDES the opening

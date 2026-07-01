@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from fractions import Fraction
 
+import pytest
+
 from craps_engine.bets.base import Resolution, ResolutionStatus
 from craps_engine.bets.line import PassLine
 from craps_engine.dice import DiceRoll, ScriptedDice
@@ -230,6 +232,17 @@ class TestTermination:
         result = run_session(dice, _PassLineProbe(10), config)
         assert result.rolls == 3
         assert result.ending_bankroll == Fraction(330)
+
+    def test_uncapped_config_fails_fast(self) -> None:
+        """A batch run without a cap would loop forever, so run_session refuses it.
+
+        ``max_rolls=None`` is legal for interactive play but nonsensical for a
+        batch run; ``run_session`` fails fast with a ValueError before the loop.
+        """
+        dice = ScriptedDice([(3, 4)])
+        config = SessionConfig(starting_bankroll=Fraction(300), max_rolls=None)
+        with pytest.raises(ValueError, match="max_rolls"):
+            run_session(dice, _PassLineProbe(10), config)
 
 
 class TestPeakTrough:

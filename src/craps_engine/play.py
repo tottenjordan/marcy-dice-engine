@@ -62,7 +62,7 @@ class GameViewPayload(TypedDict):
     last_roll: DiceRollPayload | None
     last_outcomes: list[ResolutionPayload]
     rolls_used: int
-    rolls_left: int
+    rolls_left: int | None
     game_over: bool
     game_over_reason: str | None
     odds_available: bool
@@ -112,8 +112,9 @@ class GameView:
     last_outcomes: list[Resolution]
     #: Number of rolls executed so far.
     rolls_used: int
-    #: Rolls remaining before the max-rolls cap (``max_rolls - rolls_used``).
-    rolls_left: int
+    #: Rolls remaining before the max-rolls cap (``max_rolls - rolls_used``), or
+    #: ``None`` when uncapped (``config.max_rolls is None``).
+    rolls_left: int | None
     #: Whether the game has ended.
     game_over: bool
     #: Why the game ended, or ``None`` while it is live.
@@ -209,6 +210,8 @@ class PlayController:
         bankroll = self._table.bankroll
         starting = self._config.starting_bankroll
         phase = self._table.state.phase
+        max_rolls = self._config.max_rolls
+        rolls_left = None if max_rolls is None else max_rolls - self._rolls_used
         return GameView(
             starting_bankroll=starting,
             bankroll=bankroll,
@@ -219,7 +222,7 @@ class PlayController:
             last_roll=self._last_roll,
             last_outcomes=list(self._last_outcomes),
             rolls_used=self._rolls_used,
-            rolls_left=self._config.max_rolls - self._rolls_used,
+            rolls_left=rolls_left,
             game_over=self._game_over,
             game_over_reason=self._reason,
             odds_available=phase is Phase.POINT,
@@ -317,7 +320,12 @@ class PlayController:
         return RollOutcome(ok=True, message=message, view=self.snapshot())
 
     def _check_game_over(self) -> None:
-        """Apply the termination gates with BUST -> GOAL -> MAX-ROLLS precedence."""
+        """Apply the termination gates with BUST -> GOAL -> MAX-ROLLS precedence.
+
+        The MAX-ROLLS gate is skipped entirely when ``config.max_rolls is None``
+        (uncapped interactive play): such a game ends only on bust or, if set, the
+        win goal.
+        """
         bankroll = self._table.bankroll
         config = self._config
         if bankroll <= config.loss_limit:
@@ -326,7 +334,7 @@ class PlayController:
         elif config.win_goal is not None and bankroll >= config.win_goal:
             self._game_over = True
             self._reason = "goal reached"
-        elif self._rolls_used >= config.max_rolls:
+        elif config.max_rolls is not None and self._rolls_used >= config.max_rolls:
             self._game_over = True
             self._reason = "max rolls reached"
 
