@@ -100,6 +100,17 @@ renders. Supersedes the abandoned Phase-5 P7 docs branch. Order Q1 → Q5 (linea
 | Q4 | layout — wide-screen no-scroll dashboard | ✅ Done | `9da746a` |
 | Q5 | docs — README/CLAUDE + regenerated screenshots (redo P7) | ✅ Done | `72143c1` |
 
+## Phase 7 (play-mode economics — done)
+
+Post-Phase-6 play feedback: make placed stakes reflect payout ratios, and switch
+the interactive bankroll to a wallet/cash model. Design note:
+`docs/notes/wallet-model.md`.
+
+| # | Item | Status | Commit |
+|---|---|---|---|
+| P7a | web — snap place-bet stakes to optimal units (placement + press) | ✅ Done | `2cbe555` |
+| P7b | web — wallet/cash bankroll (place deducts, remove refunds; bust on net worth); at-risk = all stakes; `(off)` uses effective-live | ✅ Done | `96e1b95` |
+
 ## Phase 3 backlog
 
 Future scope, deliberately out of Phase 3:
