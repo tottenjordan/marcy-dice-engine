@@ -87,6 +87,54 @@ lives in its own `ui` dependency group so it never becomes a runtime dependency
 of the engine (`[project.dependencies]` stays empty); `[tool.uv] default-groups`
 syncs it into the local dev venv automatically, so `uv run craps-tui` just works.
 
+## Web app
+
+A deployable **FastAPI + HTMX play-mode web app** — a browser front end where you
+actually *play* a session: place bets via common-bet buttons or a free-text box,
+roll the dice, and watch a live bankroll with data-driven coaching hints. This is
+distinct from the analyzer TUI above (which computes static odds/EV): the web app
+drives the same pure engine through a `PlayController` and an in-memory session
+store. Web dependencies (FastAPI / uvicorn / Jinja2) live only in the `web`
+dependency group and only inside `src/craps_api/`, mirroring how `craps_tui`
+isolates Textual — the published engine stays stdlib-only.
+
+Run it locally:
+
+```bash
+uv run craps-web        # serves on http://localhost:8000/
+```
+
+Then open <http://localhost:8000/>: start a game from the form (seed / stake /
+max rolls), then use the bet buttons, the free-text bet box, and the roll button.
+
+### JSON API
+
+On top of the HTML frontend the same app exposes a small JSON API (all under
+`/api`), usable by programmatic clients:
+
+- `POST /api/game` — create a game; returns `{session_id, view}` (HTTP 201).
+- `GET  /api/game/{session_id}` — the current `GameView` (404 if unknown).
+- `POST /api/game/{session_id}/bet` — place a structured (`{kind, amount[, number]}`)
+  or free-text (`{text}`) bet; a legal-but-refused bet still returns 200 with
+  `ok=false`.
+- `POST /api/game/{session_id}/roll` — roll once; returns the `RollOutcome`.
+
+### Deploy via Docker
+
+The repo ships a `Dockerfile` that runs the web app straight from the synced
+source tree (`uv sync --group web`, then `uv run craps-web`):
+
+```bash
+docker build -t craps-web .
+docker run -p 8000:8000 craps-web   # then open http://localhost:8000/
+```
+
+The image is portable to any container host (e.g. Cloud Run). It runs from source
+rather than from a built wheel on purpose: the wheel packages only `craps_engine`,
+not `craps_api` or its `templates/`/`static/` data files, so `uv sync` (which does
+the editable-style install exposing all of `src/`) is what makes the web app
+available at runtime.
+
 ## Verify the math
 
 Golden-verify recomputes a small set of canonical scenarios (the Don't Pass +
@@ -101,8 +149,8 @@ action, so any drift in the engine's arithmetic is caught immediately.
 uv run ruff format --check && uv run ruff check && uv run ty check src/ && uv run pytest
 ```
 
-Currently: ruff + ty clean, 290 tests passing, 100% coverage
-(across `craps_engine` + `craps_tui`).
+Currently: ruff + ty clean, 380 tests passing, 99.67% coverage
+(across `craps_engine` + `craps_tui` + `craps_api`).
 
 ## Project layout
 
@@ -123,6 +171,13 @@ src/craps_tui/      Textual UI + golden-verify (the only place textual/I/O live)
   viewmodel.py   pure parse/format seam over the engine
   app.py         Textual App (Analyze + Verify actions)
   __main__.py    console entry point (craps-tui)
+src/craps_api/      FastAPI JSON API + HTMX play-mode web app (only place web I/O lives)
+  app.py            FastAPI factory: JSON /api routes + HTMX HTML routes
+  session_store.py  in-memory session store over PlayController
+  board.py          pure board-context builder for the HTML partial
+  runner.py         console entry point (craps-web) — uvicorn boot glue
+  templates/        Jinja2 templates (index.html + _board.html partial)
+  static/           static assets (style.css)
 examples/        runnable demos (the only place that prints/formats)
 tests/           pytest suite
 docs/notes/      session notes
