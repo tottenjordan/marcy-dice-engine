@@ -104,8 +104,59 @@ Run it locally:
 uv run craps-web        # serves on http://localhost:8000/
 ```
 
-Then open <http://localhost:8000/>: start a game from the form (seed / stake /
-max rolls), then use the bet buttons, the free-text bet box, and the roll button.
+Then open <http://localhost:8000/>: start a game from the form (seed / starting
+stake), then use the clickable felt zones, the free-text bet box, and the roll
+button. Games are **uncapped** — a game ends only on a bust or a win-goal, not a
+roll count.
+
+### Playing on the felt
+
+The board is a green-felt craps table whose zones are clickable tiles. On top of
+that it carries a set of play-mode conveniences:
+
+- **Advisory optimal place-bet units** — each Place zone nudges you onto a stake
+  that pays an exact whole-dollar amount: Place **6 / 8** in **$6** units
+  (pays 7:6), Place **5 / 9** in **$5** units (pays 7:5), Place **4 / 10** in
+  **$5** units (pays 9:5). This is advisory only — surfaced in the zone tooltip
+  and a static felt tip. Your typed stake is **never** changed, and an off-unit
+  bet is still accepted and pays the exact fractional amount.
+- **Point ON indicator** — when a point is established, its box number gets a
+  yellow ring and an "ON" puck.
+- **Net percentage** — the running Net dollar figure is shown alongside a Net %
+  of the starting bankroll.
+- **Wide-screen no-scroll dashboard** — on wide viewports (`min-width: 1024px`)
+  the felt stays the focal area with the stats, hint, and controls arranged in
+  side panels around it; the narrow / mobile single-column layout is preserved.
+- **Uncapped play** with **press** / **remove** bet operations, a
+  **total-at-risk** badge, a **last-10 roll strip**, a **per-roll net**
+  indicator, and **odds-ratio tooltips** on the playable zones.
+
+Refreshed captures of these states:
+
+![Fresh come-out board — empty felt in the wide dashboard layout](docs/images/felt-comeout.png)
+*Come-out phase: an empty felt with the wide-screen dashboard layout and a $0 At-risk badge.*
+
+![Bets placed on the felt — chips on Pass, Place 6, and Place 8](docs/images/felt-bets.png)
+*Bets placed: chips on Pass Line + Place 6 + Place 8 with a non-$0 At-risk badge.*
+
+![After a roll — dice, per-roll net, roll strip, and Net %](docs/images/felt-postroll.png)
+*After a roll: the dice, per-roll net indicator, last-10 roll strip, and Net %.*
+
+![Point ON — yellow ring and ON puck plus the Take/Lay odds zones](docs/images/felt-odds.png)
+*Point ON: the yellow ring + "ON" puck on the point's box, with the Take/Lay free-odds zones available.*
+
+### Regenerating the screenshots
+
+The four screenshots above are produced by `docs/capture_screenshots.py`, a
+PEP 723 standalone script that boots the app on a fixed port and drives the HTMX
+flows headless with Chromium at a fixed seed for reproducibility. Playwright is a
+**script-only inline dependency** of that file — it is deliberately **not** a
+project dependency, so the quality gate and tests never import it. Recipe:
+
+```bash
+uv run --with playwright playwright install chromium   # one-time
+uv run --script docs/capture_screenshots.py            # writes docs/images/*.png
+```
 
 ### JSON API
 
@@ -149,7 +200,7 @@ action, so any drift in the engine's arithmetic is caught immediately.
 uv run ruff format --check && uv run ruff check && uv run ty check src/ && uv run pytest
 ```
 
-Currently: ruff + ty clean, 380 tests passing, 99.67% coverage
+Currently: ruff + ty clean, 456 tests passing, 99.70% coverage
 (across `craps_engine` + `craps_tui` + `craps_api`).
 
 ## Project layout
@@ -171,7 +222,7 @@ src/craps_tui/      Textual UI + golden-verify (the only place textual/I/O live)
   viewmodel.py   pure parse/format seam over the engine
   app.py         Textual App (Analyze + Verify actions)
   __main__.py    console entry point (craps-tui)
-src/craps_api/      FastAPI JSON API + HTMX play-mode web app (only place web I/O lives)
+src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — advisory place-bet units, point-ON puck, net %, wide dashboard (only place web I/O lives)
   app.py            FastAPI factory: JSON /api routes + HTMX HTML routes
   session_store.py  in-memory session store over PlayController
   board.py          pure board-context builder for the HTML partial
