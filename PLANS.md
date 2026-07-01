@@ -41,7 +41,7 @@ Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Order A → B → C
 | C4 | craps_tui/app.py — Textual calculator app + verify screen | ✅ Done | `07f0151` |
 | C5 | docs sync — CLAUDE.md + README.md for the TUI | ✅ Done | `7477a52` |
 
-## Phase 3 (play mode + web app — in progress)
+## Phase 3 (play mode + web app — done)
 
 Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Interactive play + a
 deployable FastAPI + HTMX web app. Order W1 → W6.
@@ -54,6 +54,24 @@ deployable FastAPI + HTMX web app. Order W1 → W6.
 | W4 | craps_api/ — FastAPI JSON backend + session store + `craps-web` | ✅ Done | `e5d72ac` |
 | W5 | craps_api/ — HTMX browser frontend (templates + static) | ✅ Done | `aad4b80` |
 | W6 | Dockerfile + deploy/docs sync (README/CLAUDE/PLANS) | ✅ Done | `2e33622` |
+
+## Phase 3 backlog
+
+Future scope, deliberately out of Phase 3:
+
+- **Installable-wheel packaging.** A built wheel currently packages only the
+  `craps_engine` module (uv_build defaults the wheel to the project-name module),
+  so `craps_api`/`craps_tui` and the `craps_api/templates` + `craps_api/static`
+  data files are omitted. This is invisible locally (editable `.pth` install) and
+  does not affect the Docker image (which runs from the synced source tree by
+  design), but publishing installable wheels would need multi-module +
+  data-file inclusion configured for `uv_build`.
+- **Multi-instance / durable session store.** The web app's `SessionStore` is
+  in-memory and single-instance (games are lost on restart, no TTL/eviction). A
+  shared store (e.g. Redis) is required before horizontal scaling.
+- **Richer play features.** Free odds on come / don't-come, come-point buttons, a
+  free-cash / affordability bankroll model, bankroll-trajectory charts, and
+  accounts/persistence.
 
 ## Phase 2 backlog
 
