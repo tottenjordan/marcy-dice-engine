@@ -162,16 +162,24 @@ that it carries a set of play-mode conveniences:
   **total-at-risk** badge (every stake on the felt), a **last-10 roll strip**, a
   **per-roll net** indicator, and **odds-ratio tooltips** on the playable zones.
 
-Refreshed captures of these states:
+Refreshed captures of these states. **A note on the Net figure:** the board uses
+a **wallet/cash** model, so placing a bet moves that cash from your bankroll onto
+the felt. Before anything resolves, the Net therefore reads as the *negative of
+the "At risk" amount* — the stakes are **committed, not lost**. Removing a bet (or
+a win) returns that cash to the wallet and the Net moves back up.
 
 ![Fresh come-out board — empty felt in the wide dashboard layout](docs/images/felt-comeout.png)
-*Come-out phase: an empty felt with the wide-screen dashboard layout and a $0 At-risk badge.*
+*Come-out phase: an empty felt, `$0` At-risk, and `$0` Net — no cash is on the felt yet.*
 
 ![Bets placed on the felt — chips on Pass, Place 6, and Place 8](docs/images/felt-bets.png)
-*Bets placed: chips on Pass Line + Place 6 + Place 8 with a non-$0 At-risk badge.*
+*Bets placed: Pass Line `$10` + Place 6 `$12` + Place 8 `$12` = `$34` moved onto the
+felt, so Bankroll drops to `$966` and Net reads `-$34` — exactly the `$34` now
+At-risk. This is committed stake, not a loss; remove a bet and the Net climbs back.*
 
 ![After a roll — dice, per-roll net, roll strip, and Net %](docs/images/felt-postroll.png)
-*After a roll: the dice, per-roll net indicator, last-10 roll strip, and Net %.*
+*After a roll: the come-out roll of 5 **establishes the point** (no bet wins or
+loses), so the per-roll net is `$0` and Net holds at `-$34` — still just the
+committed stakes on the felt, waiting on the point.*
 
 ![Point ON — yellow ring and ON puck plus the Take/Lay odds zones](docs/images/felt-odds.png)
 *Point ON: the yellow ring + "ON" puck on the point's box, with the Take/Lay free-odds zones available.*
