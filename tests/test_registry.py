@@ -18,6 +18,7 @@ from craps_engine.registry import (
     BetSpec,
     odds_ratio,
     place_spec,
+    place_unit,
 )
 
 
@@ -58,6 +59,22 @@ def test_place_payouts_exact() -> None:
     assert place_spec(9).payout == RatioOdds(7, 5)
     assert place_spec(4).payout == RatioOdds(9, 5)
     assert place_spec(10).payout == RatioOdds(9, 5)
+
+
+def test_place_unit_exact() -> None:
+    # The optimal whole-dollar unit is the payout ratio's stake leg, so a
+    # stake that is a multiple of it always pays whole dollars.
+    assert place_unit(6) == 6
+    assert place_unit(8) == 6
+    assert place_unit(5) == 5
+    assert place_unit(9) == 5
+    assert place_unit(4) == 5
+    assert place_unit(10) == 5
+
+
+def test_place_unit_rejects_invalid() -> None:
+    with pytest.raises(ValueError, match="place"):
+        place_unit(7)
 
 
 def test_place_spec_keys() -> None:

@@ -205,6 +205,31 @@ def place_spec(number: int) -> BetSpec:
     return PLACE_SPECS[number]
 
 
+def place_unit(number: int) -> int:
+    """Smallest whole-dollar Place stake on ``number`` that pays whole dollars.
+
+    A Place bet pays at a win:stake ratio (see ``_PLACE_PAYOUT``), so a wager of
+    ``stake`` dollars returns ``stake * (win / stake) = win`` dollars -- an
+    integer -- only when the wager is a multiple of the ratio's *stake leg*.
+    Any smaller or non-multiple wager pushes the payout off a whole-dollar
+    boundary and the casino rounds it down, quietly worsening the bettor's
+    already-negative edge. The stake leg is therefore the optimal advisory unit:
+    the smallest stake for which ``stake x (win/stake)`` is exact, and every
+    whole-dollar multiple of it stays exact too. Returning it lets the UI nudge
+    players onto efficient stakes (e.g. $6 on the 6, not $5).
+
+    Concrete table (number -> unit, from the payout ratio):
+
+    * 6 / 8  -> 6  (pays 7:6)
+    * 5 / 9  -> 5  (pays 7:5)
+    * 4 / 10 -> 5  (pays 9:5)
+
+    Delegates validation to :func:`place_spec`, so non-place numbers (7, 11, the
+    craps numbers) raise :class:`ValueError` and this helper fails fast too.
+    """
+    return place_spec(number).payout.stake
+
+
 # ---------------------------------------------------------------------------
 # Free Odds (true odds) ratios.
 # ---------------------------------------------------------------------------
