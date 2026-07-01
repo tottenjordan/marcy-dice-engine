@@ -25,16 +25,13 @@ import enum
 from dataclasses import dataclass
 from typing import TypedDict
 
+from craps_engine.ruleset import STANDARD, Ruleset
+
 # Inclusive bounds on a two-die total. Any total outside this range is impossible
 # and is rejected fail-fast (a repo convention) so a bad value can never drive
 # the phase logic.
 _MIN_TOTAL = 2
 _MAX_TOTAL = 12
-
-# The "point numbers": come-out totals that establish a point. The complement
-# within 2..12 (namely 2, 3, 7, 11, 12) are come-out naturals/craps that leave
-# the table on come-out.
-_POINT_NUMBERS = frozenset({4, 5, 6, 8, 9, 10})
 
 # The seven-out total, named for readability at its single use site.
 _SEVEN = 7
@@ -120,8 +117,14 @@ class GameState:
     bet settlement, Come/Don't-Come sub-points).
     """
 
-    def __init__(self) -> None:
-        """Begin a fresh shooter's round: come-out, no point."""
+    def __init__(self, ruleset: Ruleset = STANDARD) -> None:
+        """Begin a fresh shooter's round: come-out, no point.
+
+        Args:
+            ruleset: The rules variant governing which come-out totals establish a
+                point. Defaults to :data:`~craps_engine.ruleset.STANDARD`.
+        """
+        self.ruleset = ruleset
         self.phase: Phase = Phase.COME_OUT
         self.point: int | None = None
 
@@ -151,7 +154,7 @@ class GameState:
 
     def _apply_come_out(self, total: int, previous: Phase) -> PhaseTransition:
         """Handle a roll while on the come-out."""
-        if total in _POINT_NUMBERS:
+        if total in self.ruleset.point_numbers:
             # A point number establishes the point: move to POINT phase.
             self.phase = Phase.POINT
             self.point = total
@@ -163,9 +166,10 @@ class GameState:
                 point_made=False,
                 seven_out=False,
             )
-        # Otherwise the total is 2, 3, 7, 11, or 12 -- a come-out natural or
-        # craps. These settle LINE BETS but do NOT change the table phase, so the
-        # machine stays on come-out with no point and reports no event.
+        # Otherwise the total is a come-out natural or craps for this ruleset
+        # (standard: 2, 3, 7, 11, 12; crapless: only 7). These settle LINE BETS
+        # but do NOT change the table phase, so the machine stays on come-out
+        # with no point and reports no event.
         return PhaseTransition(
             previous=previous,
             current=self.phase,

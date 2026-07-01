@@ -49,15 +49,18 @@ if TYPE_CHECKING:
     from craps_engine.dice import DiceRoll
     from craps_engine.state import GameState
 
-# The come-point numbers a Come-family bet may travel on. 7 and 11, and the
-# craps numbers 2/3/12, are never points, so binding a come-point to them is
-# rejected fail-fast (a repo convention).
-_VALID_POINTS = frozenset({4, 5, 6, 8, 9, 10})
+# The come-point numbers a Come-family bet may travel on. Only 7 is never a
+# point under any supported ruleset (it is the seven-out / the crapless natural),
+# so binding a come-point to it is rejected fail-fast (a repo convention). The
+# craps numbers 2/3/12 and the 11 ARE valid come-points under crapless craps;
+# whether a given roll actually establishes one is decided ruleset-correctly by
+# :meth:`resolve` (which reads ``state.ruleset``) and gated in :meth:`advance` on
+# a NO_ACTION resolution -- never by this set alone.
+_VALID_POINTS = frozenset({2, 3, 4, 5, 6, 8, 9, 10, 11, 12})
 
-# Coming-state outcome sets, named once so the resolve logic reads like the
-# rulebook (mirrors the line-bet come-out vocabulary).
-_PASS_NATURALS = frozenset({7, 11})  # Come WINS / Don't Come LOSES while coming.
-_PASS_CRAPS = frozenset({2, 3, 12})  # Come LOSES while coming (12 is NOT barred).
+# Don't Come coming-state outcome sets, named once so its resolve logic reads
+# like the rulebook (Don't Come is a standard-only bet, so these stay fixed).
+_PASS_NATURALS = frozenset({7, 11})  # Don't Come LOSES while coming.
 _DONT_WIN_CRAPS = frozenset({2, 3})  # Don't Come WINS while coming (12 is barred).
 
 # The barred come-out total: a Don't Come PUSH, never a win.
@@ -115,7 +118,7 @@ class _ComeBet(Bet):
         :class:`Bet`.
         """
         if come_point is not None and come_point not in _VALID_POINTS:
-            msg = f"not a valid come point: {come_point} (valid points: 4, 5, 6, 8, 9, 10)"
+            msg = f"not a valid come point: {come_point} (7 is never a come point)"
             raise ValueError(msg)
         super().__init__(id, amount, working=working)
         #: The come-point this bet is travelling on, or ``None`` while coming.
@@ -128,9 +131,11 @@ class _ComeBet(Bet):
         :meth:`resolve` can stay strictly pure (it never sets
         :attr:`come_point`). Returns ``True`` and sets the come-point only when
         the bet is still coming (:attr:`come_point` is ``None``) AND ``total`` is
-        a real point number (4,5,6,8,9,10). Otherwise -- already travelling, or
-        ``total`` is a 7/11 or a craps number -- it leaves the bet untouched and
-        returns ``False``.
+        a valid come-point (anything but a 7). Otherwise -- already travelling, or
+        ``total`` is a 7 -- it leaves the bet untouched and returns ``False``.
+        Whether a given roll *should* establish is decided ruleset-correctly by
+        :meth:`advance` (gated on a NO_ACTION resolution), so this mutator only
+        guards the universal 7 case.
         """
         if self.come_point is None and total in _VALID_POINTS:
             self.come_point = total
@@ -138,19 +143,18 @@ class _ComeBet(Bet):
         return False
 
     def advance(self, roll: DiceRoll, resolution: Resolution) -> None:
-        """Establish the come-point on a point-number roll (the travelling step).
+        """Establish the come-point when the roll had no action (the travelling step).
 
-        The come family's per-roll transition: after :meth:`resolve` reports a
-        point number, this funnels the lone mutation through
-        :meth:`establish_come_point`, which sets :attr:`come_point` ONLY while the
-        bet is still coming AND ``roll.total`` is a real point (4,5,6,8,9,10) --
-        a 7/11 or a craps number, or an already-travelling bet, leaves it
-        untouched. Both subclasses inherit this, so :meth:`resolve` stays strictly
-        pure. ``resolution`` is unused (the roll total alone decides) but is kept
-        for the shared hook signature.
+        The come family's per-roll transition. :meth:`resolve` is ruleset-aware,
+        so a NO_ACTION result while the bet is still coming means exactly "this
+        total establishes the come-point under the active ruleset" -- standard:
+        4/5/6/8/9/10; crapless: any total but a 7. Keying establishment on the
+        resolution STATUS (rather than a hard-coded point set) keeps a standard
+        come bet that LOSES on a craps total from ever briefly binding a
+        come-point. Both subclasses inherit this, so :meth:`resolve` stays pure.
         """
-        del resolution  # Establishment keys only on the roll total.
-        self.establish_come_point(roll.total)
+        if resolution.status is ResolutionStatus.NO_ACTION:
+            self.establish_come_point(roll.total)
 
     def to_dict(self) -> _ComeBetPayload:
         """Serialize, adding ``come_point`` to the base bet payload.
@@ -188,36 +192,36 @@ class ComeBet(_ComeBet):
         """Settle the come bet against one roll, IGNORING the table phase.
 
         Pure and read-only: never mutates :attr:`come_point` or ``state``. The
-        ``state`` argument is unused (a come bet rides its own come-point) and is
-        present only to honor the shared :meth:`Bet.resolve` signature.
+        come bet ignores the table PHASE (it rides its own come-point), but while
+        coming it consults ``state.ruleset`` for the come-out naturals/craps so it
+        behaves like a Pass Line come-out under the active variant (standard: 7/11
+        win, 2/3/12 lose; crapless: only 7 wins, nothing craps out).
         """
-        # The come bet is oblivious to the table phase; ``state`` is intentionally
-        # unused here (kept for the shared resolve signature).
-        del state
         total = roll.total
         # Even-money net winnings for this stake (1:1 -> equals the stake), kept
         # data-driven via the Pass Line registry payout rather than hard-coded.
         win_amount: Fraction = REGISTRY["pass_line"].payout.payout(self.amount)
 
         if self.come_point is None:
-            # COMING state: decided immediately like a Pass Line come-out.
-            if total in _PASS_NATURALS:
+            # COMING state: decided immediately like a Pass Line come-out, using
+            # the active ruleset's naturals/craps.
+            if total in state.ruleset.pass_naturals:
                 return Resolution(
                     bet_id=self.id,
                     status=ResolutionStatus.WIN,
                     delta=win_amount,
                     note=f"natural {total}",
                 )
-            if total in _PASS_CRAPS:
+            if total in state.ruleset.pass_craps:
                 return Resolution(
                     bet_id=self.id,
                     status=ResolutionStatus.LOSE,
                     delta=-self.amount,
                     note=f"craps {total}",
                 )
-            # A point number (4,5,6,8,9,10): this WOULD establish the come-point,
-            # but no money moves and we do NOT mutate here (establishment is a
-            # later, separate mutator). Report no action.
+            # A point number: this WOULD establish the come-point, but no money
+            # moves and we do NOT mutate here (establishment is a later, separate
+            # mutator). Report no action.
             return Resolution(
                 bet_id=self.id,
                 status=ResolutionStatus.NO_ACTION,

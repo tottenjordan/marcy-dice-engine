@@ -2,6 +2,7 @@
 
 import pytest
 
+from craps_engine.ruleset import CRAPLESS, STANDARD
 from craps_engine.state import GameState, Phase, PhaseTransition
 
 
@@ -87,6 +88,52 @@ def test_all_point_numbers_establish() -> None:
         assert s.phase is Phase.POINT
         assert s.point == total
         assert t.point_established
+
+
+def test_default_ruleset_is_standard() -> None:
+    assert GameState().ruleset is STANDARD
+
+
+def test_crapless_establishes_point_on_normally_craps_naturals() -> None:
+    """Under crapless, 2/3/11/12 establish the point instead of settling on come-out."""
+    for total in (2, 3, 11, 12):
+        s = GameState(CRAPLESS)
+        t = s.apply(total)
+        assert s.phase is Phase.POINT
+        assert s.point == total
+        assert t.point_established
+        assert not t.point_made
+        assert not t.seven_out
+
+
+def test_crapless_seven_stays_on_come_out() -> None:
+    """Under crapless, a come-out 7 is the only natural: no point, stays come-out."""
+    s = GameState(CRAPLESS)
+    t = s.apply(7)
+    assert s.phase is Phase.COME_OUT
+    assert s.point is None
+    assert not t.point_established
+    assert not t.point_made
+    assert not t.seven_out
+
+
+def test_crapless_reset_keeps_ruleset() -> None:
+    s = GameState(CRAPLESS)
+    s.apply(3)
+    s.reset()
+    assert s.phase is Phase.COME_OUT
+    assert s.point is None
+    assert s.ruleset is CRAPLESS
+
+
+def test_standard_still_settles_naturals_on_come_out() -> None:
+    """Regression: explicit STANDARD ruleset behaves exactly as the default."""
+    for total in (2, 3, 7, 11, 12):
+        s = GameState(STANDARD)
+        t = s.apply(total)
+        assert s.phase is Phase.COME_OUT
+        assert s.point is None
+        assert not t.point_established
 
 
 def test_apply_rejects_invalid_total() -> None:

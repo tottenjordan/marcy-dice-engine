@@ -11,6 +11,7 @@ from fractions import Fraction
 from craps_engine.bets.base import ResolutionStatus
 from craps_engine.bets.line import DontPass, PassLine
 from craps_engine.dice import DiceRoll
+from craps_engine.ruleset import CRAPLESS
 from craps_engine.state import GameState
 
 
@@ -78,6 +79,36 @@ def test_pass_status_and_notes() -> None:
 def test_pass_bet_id_mirrors_id() -> None:
     r = PassLine("mypass", Fraction(10)).resolve(DiceRoll(5, 6), GameState())
     assert r.bet_id == "mypass"
+
+
+# ---------------------------------------------------------------------------
+# Pass Line under crapless craps
+# ---------------------------------------------------------------------------
+def test_pass_crapless_comeout_seven_wins() -> None:
+    """Crapless come-out: only 7 is a natural, and it still wins the Pass line."""
+    s = GameState(CRAPLESS)
+    r = PassLine("p", Fraction(10)).resolve(DiceRoll(6, 1), s)  # 7
+    assert r.status is ResolutionStatus.WIN
+    assert r.delta == Fraction(10)
+
+
+def test_pass_crapless_comeout_no_craps_loss() -> None:
+    """Crapless come-out: 2/3/11/12 establish the point (NO_ACTION), never a loss."""
+    s = GameState(CRAPLESS)
+    for d in (DiceRoll(1, 1), DiceRoll(1, 2), DiceRoll(5, 6), DiceRoll(6, 6)):  # 2,3,11,12
+        r = PassLine("p", Fraction(10)).resolve(d, s)
+        assert r.status is ResolutionStatus.NO_ACTION
+        assert r.delta == Fraction(0)
+
+
+def test_pass_crapless_point_phase_unchanged() -> None:
+    """Once a crapless point is set, the Pass line races it against the 7 as usual."""
+    s = GameState(CRAPLESS)
+    s.apply(3)  # point 3
+    made = PassLine("p", Fraction(10)).resolve(DiceRoll(1, 2), s)  # 3 made
+    assert made.status is ResolutionStatus.WIN
+    out = PassLine("p", Fraction(10)).resolve(DiceRoll(3, 4), s)  # 7 out
+    assert out.status is ResolutionStatus.LOSE
 
 
 # ---------------------------------------------------------------------------

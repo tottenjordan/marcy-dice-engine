@@ -38,9 +38,10 @@ if TYPE_CHECKING:
     from craps_engine.dice import DiceRoll
     from craps_engine.state import GameState
 
-# Come-out outcome sets, named once so the resolve logic reads like the rulebook.
-_PASS_NATURALS = frozenset({7, 11})  # Pass wins / Don't loses on the come-out.
-_PASS_CRAPS = frozenset({2, 3, 12})  # Pass loses on the come-out.
+# Come-out outcome sets for the Don't side, named once so its resolve logic reads
+# like the rulebook. (PassLine reads its naturals/craps from ``state.ruleset`` so
+# it can honor rules variants; Don't Pass is a standard-only bet.)
+_PASS_NATURALS = frozenset({7, 11})  # Don't loses on the come-out.
 _DONT_WIN_CRAPS = frozenset({2, 3})  # Don't wins on the come-out (12 is barred).
 _BAR_NUMBER = 12  # The barred come-out total: a Don't PUSH, never a win.
 _SEVEN = 7  # The seven, named for readability at its use sites.
@@ -63,24 +64,25 @@ class PassLine(Bet):
         win_amount: Fraction = REGISTRY["pass_line"].payout.payout(self.amount)
 
         if state.phase is Phase.COME_OUT:
-            # COME-OUT: decided immediately by naturals vs craps; a point number
-            # just establishes the point and leaves this bet untouched.
-            if total in _PASS_NATURALS:
+            # COME-OUT: decided immediately by the active ruleset's naturals vs
+            # craps; a point number just establishes the point and leaves this bet
+            # untouched (crapless: only 7 is a natural, nothing craps out).
+            if total in state.ruleset.pass_naturals:
                 return Resolution(
                     bet_id=self.id,
                     status=ResolutionStatus.WIN,
                     delta=win_amount,
                     note=f"natural {total}",
                 )
-            if total in _PASS_CRAPS:
+            if total in state.ruleset.pass_craps:
                 return Resolution(
                     bet_id=self.id,
                     status=ResolutionStatus.LOSE,
                     delta=-self.amount,
                     note=f"craps {total}",
                 )
-            # A point number (4,5,6,8,9,10): the point is being established, so
-            # the Pass Line has no action this roll -- it now rides that point.
+            # A point number: the point is being established, so the Pass Line has
+            # no action this roll -- it now rides that point.
             return Resolution(
                 bet_id=self.id,
                 status=ResolutionStatus.NO_ACTION,

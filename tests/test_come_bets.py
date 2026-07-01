@@ -12,9 +12,10 @@ from fractions import Fraction
 
 import pytest
 
-from craps_engine.bets.base import ResolutionStatus
+from craps_engine.bets.base import Resolution, ResolutionStatus
 from craps_engine.bets.come import ComeBet, DontCome
 from craps_engine.dice import DiceRoll
+from craps_engine.ruleset import CRAPLESS
 from craps_engine.state import GameState
 
 
@@ -161,10 +162,13 @@ def test_establish_come_point_rejects_seven() -> None:
     assert bet.come_point is None
 
 
-def test_establish_come_point_rejects_craps_number() -> None:
-    bet = ComeBet("c", Fraction(10))
-    assert bet.establish_come_point(2) is False
-    assert bet.come_point is None
+def test_establish_come_point_accepts_crapless_numbers() -> None:
+    # Under crapless craps 2/3/11/12 are valid come-points, so the mutator (which
+    # only guards the universal 7 case) now binds them.
+    for p in (2, 3, 11, 12):
+        bet = ComeBet("c", Fraction(10))
+        assert bet.establish_come_point(p) is True
+        assert bet.come_point == p
 
 
 def test_establish_come_point_for_every_valid_point() -> None:
@@ -329,3 +333,63 @@ def test_dont_come_to_dict_established_round_trips_come_point() -> None:
     d = DontCome("dc", Fraction(10), come_point=6).to_dict()
     assert d["come_point"] == 6
     assert d["type"] == "DontCome"
+
+
+# ===========================================================================
+# Come bet under crapless craps: only 7 wins while coming; every other total
+# establishes the come-point (2/3/11/12 included), and nothing craps out.
+# ===========================================================================
+def _crapless_point(p: int) -> GameState:
+    """Build a CRAPLESS GameState already on POINT with point ``p``."""
+    s = GameState(CRAPLESS)
+    s.apply(p)
+    return s
+
+
+def test_come_crapless_coming_wins_only_on_seven() -> None:
+    s = _crapless_point(4)  # table on a point; come bet is "coming"
+    r = ComeBet("c", Fraction(10)).resolve(DiceRoll(6, 1), s)  # 7
+    assert r.status is ResolutionStatus.WIN
+    assert r.delta == Fraction(10)
+
+
+def test_come_crapless_coming_establishes_on_normally_craps_naturals() -> None:
+    s = _crapless_point(4)
+    for d in (DiceRoll(1, 1), DiceRoll(1, 2), DiceRoll(5, 6), DiceRoll(6, 6)):  # 2,3,11,12
+        r = ComeBet("c", Fraction(10)).resolve(d, s)
+        assert r.status is ResolutionStatus.NO_ACTION
+        assert r.delta == Fraction(0)
+        assert r.note == "come point established"
+
+
+def test_come_crapless_advance_binds_come_point_on_two() -> None:
+    bet = ComeBet("c", Fraction(10))
+    roll = DiceRoll(1, 1)  # 2
+    resolution = bet.resolve(roll, GameState(CRAPLESS))
+    bet.advance(roll, resolution)
+    assert bet.come_point == 2
+
+
+def test_come_standard_craps_roll_never_binds_come_point() -> None:
+    """Regression: a standard come bet that LOSES on a craps roll must not bind.
+
+    Widening the valid-come-point set means ``advance`` must gate on the
+    resolution STATUS: a 2/3/12 under standard resolves to LOSE, so no come-point
+    is established even though 2/3/12 are in the widened set.
+    """
+    for d in (DiceRoll(1, 1), DiceRoll(1, 2), DiceRoll(6, 6)):  # 2, 3, 12
+        bet = ComeBet("c", Fraction(10))
+        resolution = bet.resolve(d, GameState())  # standard -> LOSE
+        assert resolution.status is ResolutionStatus.LOSE
+        bet.advance(d, resolution)
+        assert bet.come_point is None
+
+
+def test_come_advance_ignores_non_no_action_resolution() -> None:
+    """A win/lose resolution never establishes, even on a point-number roll."""
+    bet = ComeBet("c", Fraction(10))
+    forced_win = Resolution(
+        bet_id="c", status=ResolutionStatus.WIN, delta=Fraction(10), note="forced"
+    )
+    bet.advance(DiceRoll(2, 2), forced_win)  # 4, but status is WIN
+    assert bet.come_point is None
