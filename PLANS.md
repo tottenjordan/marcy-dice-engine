@@ -50,7 +50,7 @@ deployable FastAPI + HTMX web app. Order W1 → W6.
 |---|---|---|---|
 | W1 | session.py — extract per-roll settlement into `Table.settle` | ✅ Done | `6fce4e8` |
 | W2 | specs.py + play.py — bet-spec module + pure `PlayController` | ✅ Done | `d1e9d15` |
-| W3 | play.py — data-driven `coaching_hint` | ⬜ Pending | |
+| W3 | play.py — data-driven `coaching_hint` | ✅ Done | `adf76d8` |
 | W4 | craps_api/ — FastAPI JSON backend + session store + `craps-web` | ⬜ Pending | |
 | W5 | craps_api/ — HTMX browser frontend (templates + static) | ⬜ Pending | |
 | W6 | Dockerfile + deploy/docs sync (README/CLAUDE/PLANS) | ⬜ Pending | |
