@@ -41,6 +41,20 @@ Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Order A → B → C
 | C4 | craps_tui/app.py — Textual calculator app + verify screen | ✅ Done | `07f0151` |
 | C5 | docs sync — CLAUDE.md + README.md for the TUI | ✅ Done | `7477a52` |
 
+## Phase 3 (play mode + web app — in progress)
+
+Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Interactive play + a
+deployable FastAPI + HTMX web app. Order W1 → W6.
+
+| # | Item | Status | Commit |
+|---|---|---|---|
+| W1 | session.py — extract per-roll settlement into `Table.settle` | ✅ Done | `6fce4e8` |
+| W2 | specs.py + play.py — bet-spec module + pure `PlayController` | ⬜ Pending | |
+| W3 | play.py — data-driven `coaching_hint` | ⬜ Pending | |
+| W4 | craps_api/ — FastAPI JSON backend + session store + `craps-web` | ⬜ Pending | |
+| W5 | craps_api/ — HTMX browser frontend (templates + static) | ⬜ Pending | |
+| W6 | Dockerfile + deploy/docs sync (README/CLAUDE/PLANS) | ⬜ Pending | |
+
 ## Phase 2 backlog
 
 Future scope, deliberately out of Phase 1:
