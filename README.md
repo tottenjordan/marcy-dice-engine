@@ -82,9 +82,10 @@ example:
 dontpass:10, place 6:6, place 8:6      point = 4
 ```
 
-Press **Verify** (`v`) to run the golden math self-check (see below). `textual` is
-isolated in the `ui` dependency group, so it is pulled in only by `--all-groups`
-(or `--group ui`); the engine itself stays stdlib-only.
+Press **Verify** (`v`) to run the golden math self-check (see below). `textual`
+lives in its own `ui` dependency group so it never becomes a runtime dependency
+of the engine (`[project.dependencies]` stays empty); `[tool.uv] default-groups`
+syncs it into the local dev venv automatically, so `uv run craps-tui` just works.
 
 ## Verify the math
 

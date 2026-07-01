@@ -16,6 +16,14 @@ craps-tui = "craps_tui.__main__:main"
 requires = ["uv_build>=0.9.14,<0.10.0"]
 build-backend = "uv_build"
 
+[tool.uv]
+# Sync every dev-time group by default so bare `uv run <cmd>` just works:
+# `craps-tui` needs the `ui` group (textual) and the quality gate needs `test`.
+# These are dependency-GROUPS, so they never ship to consumers of the package
+# (`[project.dependencies]` stays empty) — the published engine remains
+# stdlib-only regardless of what is synced into the local dev venv.
+default-groups = ["dev", "test", "ui"]
+
 [dependency-groups]
 dev = [
     "ruff>=0.15.20",
