@@ -55,6 +55,18 @@ deployable FastAPI + HTMX web app. Order W1 → W6.
 | W5 | craps_api/ — HTMX browser frontend (templates + static) | ✅ Done | `aad4b80` |
 | W6 | Dockerfile + deploy/docs sync (README/CLAUDE/PLANS) | ✅ Done | `2e33622` |
 
+## Phase 4 (visual craps-table UI — in progress)
+
+Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Turn the plain board
+into a visual green-felt table with clickable bet zones + chips. All work stays
+in `craps_api/` (no engine changes, no new routes). Order T1 → T2 → T3.
+
+| # | Item | Status | Commit |
+|---|---|---|---|
+| T1 | board.py — felt zone-keys + `chip_zones` aggregation (pure) | ✅ Done | `641bcd7` |
+| T2 | _board.html + style.css — clickable felt with chips + dimmed unsupported | ⬜ Pending | |
+| T3 | docs sync (README/CLAUDE) for the visual table | ⬜ Pending | |
+
 ## Phase 3 backlog
 
 Future scope, deliberately out of Phase 3:
