@@ -11,6 +11,7 @@ dependencies = []
 
 [project.scripts]
 craps-tui = "craps_tui.__main__:main"
+craps-web = "craps_api.runner:main"
 
 [build-system]
 requires = ["uv_build>=0.9.14,<0.10.0"]
@@ -22,7 +23,7 @@ build-backend = "uv_build"
 # These are dependency-GROUPS, so they never ship to consumers of the package
 # (`[project.dependencies]` stays empty) — the published engine remains
 # stdlib-only regardless of what is synced into the local dev venv.
-default-groups = ["dev", "test", "ui"]
+default-groups = ["dev", "test", "ui", "web"]
 
 [dependency-groups]
 dev = [
@@ -30,11 +31,18 @@ dev = [
     "ty>=0.0.54",
 ]
 test = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
 ]
 ui = [
     "textual>=8.2.8",
+]
+web = [
+    "fastapi>=0.138.2",
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.32",
+    "uvicorn>=0.49.0",
 ]
 
 [tool.ruff]
@@ -49,9 +57,10 @@ ignore = ["D", "COM812", "ISC001"]
 "tests/**" = ["S101", "PLR2004"]
 "examples/**" = ["T201", "INP001"]
 "src/craps_tui/**" = ["INP001"]
+"src/craps_api/**" = ["INP001"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=craps_engine --cov=craps_tui --cov-report=term-missing --cov-fail-under=90"
+addopts = "--cov=craps_engine --cov=craps_tui --cov=craps_api --cov-report=term-missing --cov-fail-under=90"
 testpaths = ["tests"]
 
 [tool.ty.environment]
