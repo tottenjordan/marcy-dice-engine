@@ -1,49 +1,71 @@
-# marcy-dice-engine
+<div align="center">
 
-![A live craps table with dice mid-roll](docs/images/banner.jpeg)
+<img src="docs/images/banner.jpeg" alt="A live craps table with dice mid-roll" width="100%">
 
-A **craps betting-strategy analyzer & practice simulator** — built to learn the
-exact odds, payouts, and house-edge mechanics of combined (hedged) craps
-strategies, then *play them out*: run deterministic sessions, race strategies
-through Monte Carlo for Risk of Ruin and bankroll distributions, and explore it
-all from an interactive terminal UI.
+<h1 align="center">🎲 marcy-dice-engine 🎲</h1>
+
+> An exact-math **craps betting-strategy analyzer & practice simulator** — a pure, I/O-free engine with an interactive Textual TUI and a FastAPI + HTMX play-mode web app.
+
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![uv](https://img.shields.io/badge/packaging-uv-DE5FE9?logo=uv&logoColor=white)
+![Ruff](https://img.shields.io/badge/lint-ruff-261230?logo=ruff&logoColor=white)
+![ty](https://img.shields.io/badge/types-ty-261230?logo=astral&logoColor=white)
+![pytest](https://img.shields.io/badge/tests-456%20passing-0A9EDC?logo=pytest&logoColor=white)
+![coverage](https://img.shields.io/badge/coverage-99.7%25-15803D)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![HTMX](https://img.shields.io/badge/HTMX-3366CC?logo=htmx&logoColor=white)
+![Textual](https://img.shields.io/badge/TUI-Textual-5A2CA0)
+
+</div>
+
+Built to learn the exact odds, payouts, and house-edge mechanics of combined
+(hedged) craps strategies, then *play them out*: run deterministic sessions, race
+strategies through Monte Carlo for Risk of Ruin and bankroll distributions, and
+explore it all from a terminal UI or a browser green-felt table.
 
 The engine is a pure, I/O-free, fully type-hinted OO core. Money and odds use
 `fractions.Fraction` internally for **exact** arithmetic; floats appear only at a
 single serialization boundary (and in the Monte Carlo aggregation layer). The
-engine returns structured data (no `print`) — a thin `examples/` layer and a
-separate `craps_tui` package do all formatting and I/O.
+engine returns structured data (no `print`) — thin `examples/`, `craps_tui`, and
+`craps_api` layers do all the formatting and I/O.
 
-## Features (Phase 1)
+## Features
+
+### Engine core (pure stdlib)
 
 - **Dice** — `RandomDice(seed)` (reproducible) and `ScriptedDice` for deterministic
   scenarios, behind a `Dice` protocol.
-- **GameState** — come-out / point state machine, designed to admit Come / Don't
-  Come sub-points later.
+- **GameState** — a come-out / point state machine that also admits Come / Don't
+  Come sub-points.
 - **Bet registry** — exact odds, payouts, and house edges (Pass `7/495`,
   Don't Pass `3/220`, Place `1/66` · `1/25` · `1/15`, free odds `0`), plus
   per-roll edges and the 36-combo total-probability table.
-- **Bets** — Pass Line, Don't Pass (bar 12), Take/Lay free odds, Place 4–10.
-- **PortfolioAnalyzer** — for a combined set of wagers it reports:
-  - a **net-payout matrix** (net bankroll change per dice total 2–12), and
-  - **dual-lens EV**:
-    - *Lens A — single-roll EV* for the current state (the variance / hedge view), and
-    - *Lens B — house drag* = Σ(amount × house-edge) (the honest long-run cost).
+- **Bets** — Pass Line, Don't Pass (bar 12), Take/Lay free odds, Place 4–10, and
+  traveling **Come / Don't Come** (bar 12) built on `Bet` lifecycle hooks
+  (`remains_on_table`, `advance`).
 
-## Features (Phase 2)
+### Analysis & simulation
 
-- **Come / Don't Come** — traveling come-point bets (`ComeBet`, `DontCome`, bar 12
-  on Don't Come), built on new `Bet` lifecycle hooks (`remains_on_table`, `advance`).
+- **PortfolioAnalyzer** — for a combined set of wagers it reports a
+  **net-payout matrix** (net bankroll change per dice total 2–12) and
+  **dual-lens EV**:
+  - *Lens A — single-roll EV* for the current state (the variance / hedge view), and
+  - *Lens B — house drag* = Σ(amount × house-edge) (the honest long-run cost).
 - **Strategies** — a `Strategy` protocol plus starters: `PassLineStrategy`,
   `PassLineOddsStrategy`, `DontPassPlaceStrategy`.
 - **Session runner** — `Table` + `run_session`: a deterministic single-session
   play loop producing a bankroll trajectory (`SessionConfig` → `SessionResult`).
 - **Monte Carlo** — `run_monte_carlo` → `MonteCarloResult`: Risk of Ruin, goal-hit
-  rate, mean / median / stdev ending bankroll, percentiles, mean roll count. See
-  `examples/simulate_strategies.py` (races three strategies on one seeded batch).
+  rate, mean / median / stdev ending bankroll, percentiles, mean roll count.
+
+### Interfaces
+
 - **Interactive TUI** — a Textual calculator (`uv run craps-tui`) with an
   **Analyze** view (net-payout matrix + both EV lenses) and a **Verify** view
   (golden-verify math self-check).
+- **Web app** — a deployable FastAPI + HTMX play-mode table (`uv run craps-web`):
+  play on a clickable green felt with advisory bet units, a point-ON puck, live
+  bankroll, and coaching hints (see [Web app](#web-app)).
 
 ## Requirements
 
@@ -57,6 +79,7 @@ uv sync --all-groups
 uv run python examples/hedged_dp_place68.py     # static dual-lens analysis
 uv run python examples/simulate_strategies.py   # Monte Carlo strategy race
 uv run craps-tui                                 # interactive TUI calculator
+uv run craps-web                                 # browser play-mode web app
 ```
 
 The hedge demo builds a hedge (Don't Pass 10 + Place 6 / Place 8, point = 4) and
@@ -92,15 +115,13 @@ syncs it into the local dev venv automatically, so `uv run craps-tui` just works
 ## Web app
 
 A deployable **FastAPI + HTMX play-mode web app** — a browser front end where you
-actually *play* a session: place bets via common-bet buttons or a free-text box,
+actually *play* a session: place bets via clickable felt zones or a free-text box,
 roll the dice, and watch a live bankroll with data-driven coaching hints. This is
 distinct from the analyzer TUI above (which computes static odds/EV): the web app
 drives the same pure engine through a `PlayController` and an in-memory session
 store. Web dependencies (FastAPI / uvicorn / Jinja2) live only in the `web`
 dependency group and only inside `src/craps_api/`, mirroring how `craps_tui`
 isolates Textual — the published engine stays stdlib-only.
-
-Run it locally:
 
 ```bash
 uv run craps-web        # serves on http://localhost:8000/
@@ -236,11 +257,11 @@ tests/           pytest suite
 docs/notes/      session notes
 ```
 
-## Roadmap (Phase 3 backlog)
+## Roadmap
 
 - Free odds on Come / Don't Come bets
 - Free-cash bankroll model (placement deduction / affordability constraints)
-- Plotting or a web UI on the existing serialization-ready return types
+- Bankroll-trajectory charts on the existing serialization-ready return types
 - A strategy DSL for declaring betting policies
 
 ## Development
