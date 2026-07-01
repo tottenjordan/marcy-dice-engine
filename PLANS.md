@@ -98,7 +98,7 @@ renders. Supersedes the abandoned Phase-5 P7 docs branch. Order Q1 → Q5 (linea
 | Q2 | board — `place_units` + `net_pct` pure context | ✅ Done | `1fdb015` |
 | Q3 | felt — unit tooltips + tip, point ring/puck, net % render | ✅ Done | `fafdc66` |
 | Q4 | layout — wide-screen no-scroll dashboard | ✅ Done | `9da746a` |
-| Q5 | docs — README/CLAUDE + regenerated screenshots (redo P7) | ⬜ Pending | |
+| Q5 | docs — README/CLAUDE + regenerated screenshots (redo P7) | ✅ Done | `72143c1` |
 
 ## Phase 3 backlog
 
