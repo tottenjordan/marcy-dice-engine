@@ -82,7 +82,23 @@ Order P1 → P7. Deps: P4 needs P1+P3; P5 needs P1+P2+P3; P6 needs P4+P5; P7 las
 | P4 | api — remove/press routes + uncapped web wiring + JSON parity | ✅ Done | `55fa8d3` |
 | P5 | board — risk total, roll-net, history, odds tips, per-bet controls | ✅ Done | `29bcdfa` |
 | P6 | ui — felt trackers + per-bet press/remove controls | ✅ Done | `3a830fd` |
-| P7 | docs — README/CLAUDE + captured UI screenshots (absorbs T3) | ⬜ Pending | |
+| P7 | docs — README/CLAUDE + captured UI screenshots (absorbs T3) | ➡️ Redone as Phase 6 Q5 | |
+
+## Phase 6 (betting guidance + felt polish — in progress)
+
+Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Act on play-mode UI
+feedback: advisory optimal place-bet units (tooltip + tip, never enforced), a
+point-established indicator (yellow ring + ON puck), a Net percentage, and a
+wide-screen no-scroll dashboard. Engine-first for the unit math; `craps_api`
+renders. Supersedes the abandoned Phase-5 P7 docs branch. Order Q1 → Q5 (linear).
+
+| # | Item | Status | Commit |
+|---|---|---|---|
+| Q1 | engine — expose optimal place-bet unit (`place_unit`) | ✅ Done | `70ec326` |
+| Q2 | board — `place_units` + `net_pct` pure context | ⬜ Pending | |
+| Q3 | felt — unit tooltips + tip, point ring/puck, net % render | ⬜ Pending | |
+| Q4 | layout — wide-screen no-scroll dashboard | ⬜ Pending | |
+| Q5 | docs — README/CLAUDE + regenerated screenshots (redo P7) | ⬜ Pending | |
 
 ## Phase 3 backlog
 
