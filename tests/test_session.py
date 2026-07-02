@@ -17,6 +17,7 @@ import pytest
 from craps_engine.bets.base import Resolution, ResolutionStatus
 from craps_engine.bets.line import PassLine
 from craps_engine.dice import DiceRoll, ScriptedDice
+from craps_engine.ruleset import CRAPLESS, STANDARD
 from craps_engine.session import (
     SessionConfig,
     SessionResult,
@@ -342,3 +343,27 @@ def test_session_result_is_a_dataclass_instance() -> None:
     dice = ScriptedDice([(3, 4)])
     config = SessionConfig(starting_bankroll=Fraction(300), max_rolls=1)
     assert isinstance(run_session(dice, _PassLineProbe(10), config), SessionResult)
+
+
+class TestRulesetThreading:
+    """SessionConfig.ruleset threads into the Table's GameState."""
+
+    def test_defaults_to_standard(self) -> None:
+        assert SessionConfig(starting_bankroll=Fraction(300)).ruleset is STANDARD
+
+    def test_crapless_config_makes_three_a_point(self) -> None:
+        """A come-out 3 under crapless is NO_ACTION (point set), not a Pass loss."""
+        dice = ScriptedDice([(1, 2)])  # 3
+        config = SessionConfig(
+            starting_bankroll=Fraction(300), max_rolls=1, ruleset=CRAPLESS
+        )
+        result = run_session(dice, _PassLineProbe(10), config)
+        # Standard would lose the Pass line on a come-out 3; crapless keeps it.
+        assert result.ending_bankroll == Fraction(300)
+
+    def test_standard_config_loses_pass_on_three(self) -> None:
+        """Contrast: the same come-out 3 loses the Pass line under standard."""
+        dice = ScriptedDice([(1, 2)])  # 3
+        config = SessionConfig(starting_bankroll=Fraction(300), max_rolls=1)
+        result = run_session(dice, _PassLineProbe(10), config)
+        assert result.ending_bankroll == Fraction(290)

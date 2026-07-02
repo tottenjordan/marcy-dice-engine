@@ -35,7 +35,7 @@ from craps_engine.money import serialize_fraction
 from craps_engine.registry import snap_to_place_unit
 from craps_engine.session import SessionConfig, Table
 from craps_engine.specs import BetSpec, build_bet, parse_bet_spec
-from craps_engine.state import Phase
+from craps_engine.state import GameState, Phase
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -46,6 +46,10 @@ if TYPE_CHECKING:
 
 # The odds kinds that are legal only once a point is established.
 _ODDS_KINDS = frozenset({"take", "lay"})
+
+# The Don't-side bet kinds, refused entirely under a ruleset that does not offer
+# the Don't side (e.g. crapless craps).
+_DONT_KINDS = frozenset({"dontpass", "dontcome", "lay"})
 
 #: Odds kind -> (flat backer class, come backer class, this side's odds class,
 #: backer label for messages). Take odds are backed by a Pass Line flat on the
@@ -96,6 +100,9 @@ class GameViewPayload(TypedDict):
     game_over: bool
     game_over_reason: str | None
     odds_available: bool
+    variant: str
+    point_numbers: list[int]
+    allow_dont: bool
 
 
 class PlaceOutcomePayload(TypedDict):
@@ -154,6 +161,12 @@ class GameView:
     game_over_reason: str | None
     #: True iff odds may be placed now (i.e. the phase is POINT).
     odds_available: bool
+    #: The rules variant name (e.g. ``"standard"``, ``"crapless"``).
+    variant: str
+    #: The point/box numbers offered by the variant (sorted).
+    point_numbers: list[int]
+    #: Whether the Don't side is offered under the variant.
+    allow_dont: bool
 
     def to_dict(self) -> GameViewPayload:
         """Serialize to a JSON-friendly dict.
@@ -178,6 +191,9 @@ class GameView:
             "game_over": self.game_over,
             "game_over_reason": self.game_over_reason,
             "odds_available": self.odds_available,
+            "variant": self.variant,
+            "point_numbers": self.point_numbers,
+            "allow_dont": self.allow_dont,
         }
 
 
@@ -230,7 +246,10 @@ class PlayController:
         """Create a controller on a fresh table for ``config``'s bankroll."""
         self._dice = dice
         self._config = config
-        self._table = Table(config.starting_bankroll)
+        #: The rules variant in force for this game (drives placement legality +
+        #: the come-out settlement of every bet via the shared GameState).
+        self._ruleset = config.ruleset
+        self._table = Table(config.starting_bankroll, GameState(config.ruleset))
         #: Monotonic id source so every placed bet gets a distinct id.
         self._counter = 0
         self._rolls_used = 0
@@ -273,6 +292,7 @@ class PlayController:
         starting = self._config.starting_bankroll
         wallet = self._table.bankroll - on_table
         phase = self._table.state.phase
+        ruleset = self._table.state.ruleset
         max_rolls = self._config.max_rolls
         rolls_left = None if max_rolls is None else max_rolls - self._rolls_used
         return GameView(
@@ -290,6 +310,9 @@ class PlayController:
             game_over=self._game_over,
             game_over_reason=self._reason,
             odds_available=phase is Phase.POINT,
+            variant=ruleset.name,
+            point_numbers=sorted(ruleset.point_numbers),
+            allow_dont=ruleset.allow_dont,
         )
 
     def place_bet(self, spec: BetSpec) -> PlaceOutcome:
@@ -308,6 +331,10 @@ class PlayController:
                 view=self.snapshot(),
             )
 
+        ruleset_rejection = self._reject_against_ruleset(spec)
+        if ruleset_rejection is not None:
+            return ruleset_rejection
+
         if spec.kind in _ODDS_KINDS:
             rejection = self._reject_illegal_odds(spec)
             if rejection is not None:
@@ -322,6 +349,32 @@ class PlayController:
             message=f"placed {spec.kind} {bet_id}",
             view=self.snapshot(),
         )
+
+    def _reject_against_ruleset(self, spec: BetSpec) -> PlaceOutcome | None:
+        """Reject a bet the active ruleset does not permit; else ``None``.
+
+        Two gates, both returning an ``ok=False`` outcome (never raising):
+
+        * **Don't-side gate.** A variant with ``allow_dont=False`` (crapless
+          craps) offers no Don't Pass / Don't Come / Lay, so those are refused.
+        * **Number gate.** A numbered bet (place/take/lay) on a total that is not
+          a point number under this ruleset is refused -- e.g. ``place 2`` under
+          standard craps, or a stray ``take 7``.
+        """
+        ruleset = self._ruleset
+        if not ruleset.allow_dont and spec.kind in _DONT_KINDS:
+            return PlaceOutcome(
+                ok=False,
+                message=f"Don't bets aren't offered in {ruleset.name} craps",
+                view=self.snapshot(),
+            )
+        if spec.number is not None and spec.number not in ruleset.point_numbers:
+            return PlaceOutcome(
+                ok=False,
+                message=f"{spec.number} isn't a point number in {ruleset.name} craps",
+                view=self.snapshot(),
+            )
+        return None
 
     def _reject_illegal_odds(self, spec: BetSpec) -> PlaceOutcome | None:
         """Return a rejection for illegal take/lay odds, else ``None``.
@@ -708,8 +761,13 @@ def _render_place_off(_view: GameView) -> str:
     )
 
 
-def _render_come_out(_view: GameView) -> str:
-    """Explain how a Pass line resolves on the come-out roll."""
+def _render_come_out(view: GameView) -> str:
+    """Explain how a Pass line resolves on the come-out roll (variant-aware)."""
+    if view.variant == "crapless":
+        return (
+            "Come-out: a Pass line wins on 7; any other number becomes your "
+            "point (nothing craps out)."
+        )
     return "Come-out roll: a Pass line wins on 7 or 11 and loses on 2, 3, or 12."
 
 

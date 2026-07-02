@@ -21,6 +21,7 @@ from craps_engine.play import (
     _odds_prompt_applies,
     coaching_hint,
 )
+from craps_engine.ruleset import CRAPLESS
 from craps_engine.session import SessionConfig
 from craps_engine.specs import BetSpec
 from craps_engine.state import Phase
@@ -34,6 +35,11 @@ def _config(**kwargs: object) -> SessionConfig:
     }
     base.update(kwargs)
     return SessionConfig(**base)  # type: ignore[arg-type]
+
+
+def _crapless_config(**kwargs: object) -> SessionConfig:
+    """A default config running the CRAPLESS ruleset."""
+    return _config(ruleset=CRAPLESS, **kwargs)
 
 
 # --- the single place-bet funnel -------------------------------------------
@@ -478,6 +484,9 @@ def test_gameview_to_dict_shape() -> None:
         "game_over",
         "game_over_reason",
         "odds_available",
+        "variant",
+        "point_numbers",
+        "allow_dont",
     ):
         assert key in payload
 
@@ -886,3 +895,60 @@ class TestCoachingHint:
         view = ctrl.snapshot()
         assert view.odds_available is False
         assert not _odds_prompt_applies(view)
+
+
+# --- crapless craps variant -------------------------------------------------
+
+
+class TestCraplessVariant:
+    """A CRAPLESS PlayController: extra place numbers, no Don't side."""
+
+    def test_view_exposes_variant_fields(self) -> None:
+        ctrl = PlayController(ScriptedDice([]), _crapless_config())
+        view = ctrl.snapshot()
+        assert view.variant == "crapless"
+        assert view.allow_dont is False
+        assert view.point_numbers == [2, 3, 4, 5, 6, 8, 9, 10, 11, 12]
+
+    def test_standard_view_defaults(self) -> None:
+        view = PlayController(ScriptedDice([]), _config()).snapshot()
+        assert view.variant == "standard"
+        assert view.allow_dont is True
+        assert view.point_numbers == [4, 5, 6, 8, 9, 10]
+
+    def test_place_two_ok_in_crapless(self) -> None:
+        ctrl = PlayController(ScriptedDice([]), _crapless_config())
+        outcome = ctrl.place_bet(BetSpec("place", 6, number=2))
+        assert outcome.ok is True
+
+    def test_place_two_rejected_in_standard(self) -> None:
+        ctrl = PlayController(ScriptedDice([]), _config())
+        outcome = ctrl.place_bet(BetSpec("place", 6, number=2))
+        assert outcome.ok is False
+        assert "point number" in outcome.message
+
+    def test_dont_side_rejected_in_crapless(self) -> None:
+        ctrl = PlayController(ScriptedDice([]), _crapless_config())
+        for spec in (
+            BetSpec("dontpass", 10),
+            BetSpec("dontcome", 10),
+            BetSpec("lay", 10, number=4),
+        ):
+            outcome = ctrl.place_bet(spec)
+            assert outcome.ok is False
+            assert "Don't bets" in outcome.message
+
+    def test_take_odds_on_crapless_come_point_two(self) -> None:
+        # roll 1 = 5 (point 5); place a come; roll 2 = 2 travels it to come-point 2;
+        # take odds on 2 are then legal (backed by the come bet on 2).
+        ctrl = PlayController(ScriptedDice([(1, 4), (1, 1)]), _crapless_config())
+        ctrl.roll()  # establish crapless point 5
+        ctrl.place_bet(BetSpec("come", 10))
+        ctrl.roll()  # come bet travels to come-point 2
+        outcome = ctrl.place_bet(BetSpec("take", 1, number=2))
+        assert outcome.ok is True
+
+    def test_come_out_hint_is_variant_aware(self) -> None:
+        ctrl = PlayController(ScriptedDice([]), _crapless_config())
+        hint = coaching_hint(ctrl.snapshot())
+        assert "nothing craps out" in hint

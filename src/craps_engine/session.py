@@ -47,6 +47,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Protocol, TypedDict, runtime_checkable
 
 from craps_engine.money import FractionPayload, serialize_fraction
+from craps_engine.ruleset import STANDARD, Ruleset
 from craps_engine.state import GameState
 
 if TYPE_CHECKING:
@@ -89,6 +90,8 @@ class SessionConfig:
     win_goal: Fraction | None = None
     #: Bankroll floor; reaching it (``<=``) busts the session.
     loss_limit: Fraction = Fraction(0)
+    #: Rules variant for the session; defaults to standard craps.
+    ruleset: Ruleset = STANDARD
 
 
 class SessionResultPayload(TypedDict):
@@ -259,7 +262,7 @@ def run_session(dice: Dice, strategy: Strategy, config: SessionConfig) -> Sessio
         )
         raise ValueError(msg)
 
-    table = Table(config.starting_bankroll)
+    table = Table(config.starting_bankroll, GameState(config.ruleset))
 
     # Seed peak/trough with the start so the trajectory INCLUDES the opening
     # bankroll, even on a session that immediately bets and loses.
