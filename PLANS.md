@@ -130,6 +130,26 @@ per-bet call-on toggle. Engine-first; `craps_api` renders + adds one route pair.
 | P8f | felt — come-odds box chips + `+ odds` / come-out toggle controls + css | ✅ Done | `3171975` |
 | P8g | docs — README/CLAUDE/PLANS | ✅ Done | `978cc69` |
 
+## Phase 9 (crapless-craps variant — done)
+
+Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Add a Crapless Craps
+("Never Ever Craps") rules variant selectable from the web play-mode new-game
+form: only a 7 wins the come-out, every other total (2/3/11/12 included) becomes
+a placeable/oddsable point, and the Don't side is not offered. A frozen `Ruleset`
+value object rides on `GameState` + `SessionConfig`; bets consult it in `resolve`
+and the `PlayController` enforces per-ruleset placement legality. Engine-first;
+`craps_api` threads the toggle end-to-end and the felt renders it. Play-mode only
+(analyzer / Monte Carlo stay standard).
+
+| # | Item | Status | Commit |
+|---|---|---|---|
+| C1 | engine — `Ruleset` value object; ruleset-aware `GameState` + Pass/Come come-out resolve | ✅ Done | `0b5fde5` |
+| C2 | engine — registry place/odds specs + widened place/odds/spec number sets for 2/3/11/12 | ✅ Done | `a7ca0e7` |
+| C3 | engine — thread ruleset through `SessionConfig` + `PlayController` (placement gates + `GameView` fields) | ✅ Done | `fcbbe00` |
+| C4 | web — crapless toggle end-to-end (session store + API + form) + variant-aware felt | ✅ Done | `94061f7` |
+| C5 | lint — drop unused import + reformat after the engine changes | ✅ Done | `15cdd7b` |
+| C6 | docs — README / CLAUDE / PLANS | ✅ Done | _this commit_ |
+
 ## Phase 3 backlog
 
 Future scope, deliberately out of Phase 3:

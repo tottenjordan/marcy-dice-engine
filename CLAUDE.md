@@ -22,6 +22,7 @@ src/craps_engine/   pure, stdlib-only engine (no I/O)
   state.py       GameState machine
   registry.py    odds/payout/house-edge table
   money.py       Fraction odds + serialization
+  ruleset.py     frozen Ruleset value object (STANDARD / CRAPLESS) on GameState + SessionConfig
   portfolio.py   PortfolioAnalyzer (dual-lens EV)
   strategy.py    Strategy protocol + starter strategies
   session.py     Table + run_session deterministic single-session runner
@@ -33,7 +34,7 @@ src/craps_tui/      Textual UI + golden-verify (ONLY place textual/I/O live)
   viewmodel.py   pure parse/format seam over the engine
   app.py         Textual App (Analyze + Verify actions)
   __main__.py    console entry point (craps-tui)
-src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — wallet/cash bankroll (placing deducts, removing refunds; bust still on net worth), advisory place-bet + free-odds units (snap on placement + tooltip), free odds behind the line (require a flat bet, 3-4-5x max), free odds on come-points (chip on the box + per-bet come-out ON/OFF toggle, off by default), point-ON puck, net %, wide no-scroll dashboard (ONLY place web deps + web I/O live)
+src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — wallet/cash bankroll (placing deducts, removing refunds; bust still on net worth), advisory place-bet + free-odds units (snap on placement + tooltip), free odds behind the line (require a flat bet, 3-4-5x max), free odds on come-points (chip on the box + per-bet come-out ON/OFF toggle, off by default), crapless-craps variant toggle (7-only come-out natural, 2/3/11/12 become points, no Don't side, felt hides Don't zones + shows a Crapless badge), point-ON puck, net %, wide no-scroll dashboard (ONLY place web deps + web I/O live)
   app.py            FastAPI factory: JSON /api routes + HTMX HTML routes
   session_store.py  in-memory session store over PlayController
   board.py          pure board-context builder for the HTML partial
@@ -76,7 +77,13 @@ tooltip), free odds on Come / Don't Come bets (a **+ odds** control on a travell
 come bet's row backs its come-point under the same 3-4-5x cap, the odds chip
 renders on that come-point's box, and — faithful to a real table — those come-odds
 ride OFF on the come-out by default, returned if the come-point/7 hits there,
-with a per-bet **Come-out: ON/OFF** toggle to call them on), a point-ON indicator
+with a per-bet **Come-out: ON/OFF** toggle to call them on), an optional
+**Crapless Craps** variant (ticked on the new-game form: only a 7 is a come-out
+natural, every other total — 2/3/11/12 included — becomes a placeable/oddsable
+point, and the Don't side is not offered, so the felt renders the extra boxes,
+hides all Don't zones, and shows a Crapless badge; the variant rides on a frozen
+`Ruleset` on `GameState`/`SessionConfig` and is play-mode only — the analyzer and
+Monte Carlo stay standard), a point-ON indicator
 (yellow ring + "ON"
 puck on the point's box), a Net % beside the Net dollar figure, and a wide-screen
 no-scroll dashboard layout (mobile/narrow layout preserved). `src/craps_api/` is

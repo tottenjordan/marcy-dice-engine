@@ -65,7 +65,10 @@ engine returns structured data (no `print`) — thin `examples/`, `craps_tui`, a
   (golden-verify math self-check).
 - **Web app** — a deployable FastAPI + HTMX play-mode table (`uv run craps-web`):
   play on a clickable green felt with advisory bet units, a point-ON puck, live
-  bankroll, and coaching hints (see [Web app](#web-app)).
+  bankroll, and coaching hints (see [Web app](#web-app)). Includes a
+  **Crapless Craps** ("Never Ever Craps") variant toggle — only a 7 wins the
+  come-out, every other total (2/3/11/12 included) becomes a point, and the
+  Don't side is not offered.
 
 ## Requirements
 
@@ -153,6 +156,14 @@ that it carries a set of play-mode conveniences:
   come-out** by default — a come-point or a 7 there simply returns them — with a
   per-bet **Come-out: ON/OFF** toggle to call them on so they work through the
   come-out too.
+- **Crapless craps variant** — tick **Crapless craps** on the new-game form to
+  play "Never Ever Craps": on the come-out only a **7** wins the Pass line and
+  **every other total becomes a point** (nothing craps out), so 2, 3, 11, and 12
+  join the box row as placeable / oddsable points (Place 2/12 pay 11:2, 3/11 pay
+  11:4; free odds 2/12 → 6:1, 3/11 → 3:1). Faithful to real crapless tables, the
+  **Don't side is not offered** (no Don't Pass / Don't Come / Lay), and the felt
+  hides those zones and shows a **Crapless** badge. Standard craps is unchanged.
+  (The toggle is play-mode only; the analyzer and Monte Carlo remain standard.)
 - **Net percentage** — the running Net dollar figure is shown alongside a Net %
   of the starting bankroll.
 - **Wide-screen no-scroll dashboard** — on wide viewports (`min-width: 1024px`)
@@ -281,6 +292,7 @@ src/craps_engine/   pure, stdlib-only engine (no I/O)
   dice.py        random + deterministic dice
   registry.py    odds/payout/house-edge table
   state.py       GameState machine
+  ruleset.py     frozen Ruleset (STANDARD / CRAPLESS) carried on GameState + SessionConfig
   portfolio.py   PortfolioAnalyzer (dual-lens EV)
   strategy.py    Strategy protocol + starter strategies
   session.py     Table + run_session single-session runner
@@ -292,7 +304,7 @@ src/craps_tui/      Textual UI + golden-verify (the only place textual/I/O live)
   viewmodel.py   pure parse/format seam over the engine
   app.py         Textual App (Analyze + Verify actions)
   __main__.py    console entry point (craps-tui)
-src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — advisory place-bet + free-odds units, point-ON puck, net %, wide dashboard (only place web I/O lives)
+src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — advisory place-bet + free-odds units, point-ON puck, net %, crapless-craps variant toggle, wide dashboard (only place web I/O lives)
   app.py            FastAPI factory: JSON /api routes + HTMX HTML routes
   session_store.py  in-memory session store over PlayController
   board.py          pure board-context builder for the HTML partial
