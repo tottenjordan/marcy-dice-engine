@@ -45,10 +45,17 @@ element, so the full board is captured even when it is taller than the viewport)
 5. ``felt-comeodds.png`` — a Come bet travelled to its come-point with free odds
    behind it: the come-odds chip on the come-point's box PLUS the ``+ odds`` and
    ``Come-out: OFF`` row controls (a SECOND game on its own fixed seed).
+6. ``felt-crapless.png`` — a Crapless Craps come-out: the felt shows the extra
+   2/3/11/12 boxes (chipped via Place bets), the Don't side is gone, and the
+   Crapless badge is on (a THIRD game with the ``crapless`` toggle set).
+7. ``felt-crapless-point.png`` — after the crapless come-out roll: point **2** is
+   ON (yellow ring + "ON" puck on box 2), a point impossible in standard craps.
 
 Captures 1-4 share one game on ``_SEED``; capture 5 starts a fresh game on
 ``_COMEODDS_SEED`` (whose first two rolls deterministically set a point and then
-travel a Come bet to a different come-point without a seven-out).
+travel a Come bet to a different come-point without a seven-out); captures 6-7
+start a fresh crapless game on ``_CRAPLESS_SEED`` (whose first roll is a 2, which
+under crapless establishes point 2).
 
 The viewport is intentionally WIDE (>= 1024px) so the Phase-6 no-scroll
 dashboard layout (``@media (min-width: 1024px)`` in ``static/style.css``) is the
@@ -84,6 +91,9 @@ _SEED = 4
 # after it travels to come-point 10 on roll 2 (no seven-out), so the come-odds
 # capture is byte-for-byte reproducible.
 _COMEODDS_SEED = 7
+# Seed 2's first roll is a 2: under crapless that establishes point 2 (a total that
+# would craps out in standard craps), so the crapless point capture is reproducible.
+_CRAPLESS_SEED = 2
 _STARTING_BANKROLL = 1000
 _BASE_URL = f"http://{_HOST}:{_PORT}"
 # Wide viewport (>= 1024px) so the Phase-6 no-scroll dashboard media query is the
@@ -124,11 +134,17 @@ def _wait_until_up(timeout_s: float = 15.0) -> None:
     raise RuntimeError(msg)
 
 
-def _start_game(page: Page, *, seed: int = _SEED) -> None:
-    """Fill and submit the new-game form with a fixed ``seed`` + stake."""
+def _start_game(page: Page, *, seed: int = _SEED, crapless: bool = False) -> None:
+    """Fill and submit the new-game form with a fixed ``seed`` + stake.
+
+    When ``crapless`` is set the new-game form's Crapless-craps checkbox is ticked
+    so the resulting game runs the crapless ruleset (10 boxes, no Don't side).
+    """
     page.goto(_BASE_URL, wait_until="networkidle")
     page.fill('input[name="seed"]', str(seed))
     page.fill('input[name="starting_bankroll"]', str(_STARTING_BANKROLL))
+    if crapless:
+        page.check('input[name="crapless"]')
     page.click('form.new-game button[type="submit"]')
     page.wait_for_selector("#board .felt", state="visible")
     page.wait_for_timeout(_SWAP_SETTLE_MS)
@@ -154,7 +170,7 @@ def _shot(page: Page, name: str) -> Path:
 
 
 def _capture(page: Page) -> list[Path]:
-    """Drive the four HTMX flows and write the four board PNGs; return their paths."""
+    """Drive the HTMX flows and write every board PNG; return their paths."""
     written: list[Path] = []
 
     # 1. Fresh come-out board (empty felt).
@@ -195,6 +211,11 @@ def _capture(page: Page) -> list[Path]:
     #    lands on that box and the "+ odds" / "Come-out: OFF" row controls render.
     written.append(_capture_come_odds(page))
 
+    # 6-7. Crapless: a THIRD game with the crapless toggle set — the extra
+    #      2/3/11/12 boxes chipped, the Don't side gone + Crapless badge, then a
+    #      come-out roll that establishes point 2.
+    written.extend(_capture_crapless(page))
+
     return written
 
 
@@ -220,8 +241,37 @@ def _capture_come_odds(page: Page) -> Path:
     return _shot(page, "felt-comeodds.png")
 
 
+def _capture_crapless(page: Page) -> list[Path]:
+    """Drive a crapless game to show the extra boxes, no Don't side, and point 2."""
+    written: list[Path] = []
+
+    # 1. Crapless come-out. Chip the four boxes that only exist under crapless
+    #    (2/3/11/12) via Place bets so the extra felt is unmistakable.
+    _start_game(page, seed=_CRAPLESS_SEED, crapless=True)
+    if page.locator(".badge-crapless").count() == 0:
+        msg = "crapless badge missing — the game did not start under the crapless ruleset"
+        raise RuntimeError(msg)
+    if page.locator('button[hx-vals*=\'"spec": "dontpass"\']').count() != 0:
+        msg = "Don't Pass zone rendered under crapless — the Don't side should be hidden"
+        raise RuntimeError(msg)
+    for spec in ("place 2", "place 3", "place 11", "place 12"):
+        _place_zone(page, spec)
+    written.append(_shot(page, "felt-crapless.png"))
+
+    # 2. Roll the come-out. Seed 2's first total is 2, which under crapless sets
+    #    point 2 — a point impossible in standard craps — so the ring/puck on box 2
+    #    is the signature crapless visual.
+    _roll(page)
+    if page.locator(".point-puck").count() == 0:
+        msg = "no point established on the crapless come-out roll"
+        raise RuntimeError(msg)
+    written.append(_shot(page, "felt-crapless-point.png"))
+
+    return written
+
+
 def main() -> None:
-    """Boot the app, capture the four felt screenshots, and print a summary."""
+    """Boot the app, capture every felt screenshot, and print a summary."""
     _IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     _serve()
     _wait_until_up()
@@ -234,7 +284,7 @@ def main() -> None:
         finally:
             browser.close()
 
-    print(f"Wrote {len(written)} screenshots (seed={_SEED}) to {_IMAGES_DIR}:")  # noqa: T201
+    print(f"Wrote {len(written)} screenshots to {_IMAGES_DIR}:")  # noqa: T201
     for path in written:
         size = path.stat().st_size
         print(f"  {path.name}  ({size} bytes)")  # noqa: T201

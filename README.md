@@ -127,6 +127,26 @@ odds (purple chip on the same box). Its row shows a **+ odds** control and a
 **Come-out: OFF** toggle. Net `-$20` is just the `$20` committed (`$10` come + `$10`
 odds), not a loss.*
 
+### Crapless Craps
+
+Tick **Crapless craps** on the new-game form to play "Never Ever Craps": only a
+**7** wins the come-out and **every other total becomes a point**, so 2, 3, 11 and
+12 join the box row as placeable / oddsable points (there is no craps loss and 11
+is no longer a come-out win). Faithful to real crapless tables, the **Don't side is
+not offered**. It's a play-mode variant only — the analyzer and Monte Carlo stay
+standard. The exact math: Place **2/12** pay `11:2`, Place **3/11** pay `11:4`;
+free odds **2/12 → 6:1**, **3/11 → 3:1**.
+
+![Crapless come-out felt — 10 boxes including 2/3/11/12, no Don't side, Crapless badge](docs/images/felt-crapless.png)
+*Crapless felt: the box row now carries **2, 3, 11 and 12** (chipped here with Place
+bets), the phase shows a **Crapless** badge, and the Don't Pass / Don't Come / Lay
+zones are gone.*
+
+![Crapless point — dice show 1+1, yellow ring and ON puck on box 2](docs/images/felt-crapless-point.png)
+*A come-out **2** establishes **point 2** — impossible in standard craps — with the
+yellow ring + "ON" puck on box 2 and a Take Odds slot (2/12 pay 6:1) now open
+behind the line.*
+
 <details>
 <summary><b>JSON API</b> — the same app exposes a small JSON API under <code>/api</code></summary>
 
@@ -166,7 +186,7 @@ all of `src/`) is what makes the web app available at runtime.
 <details>
 <summary><b>Regenerating the screenshots</b></summary>
 
-The five screenshots above are produced by `docs/capture_screenshots.py`, a
+The screenshots above are produced by `docs/capture_screenshots.py`, a
 PEP 723 standalone script that boots the app on a fixed port and drives the HTMX
 flows headless with Chromium at a fixed seed for reproducibility. Playwright is a
 **script-only inline dependency** of that file — deliberately **not** a project
