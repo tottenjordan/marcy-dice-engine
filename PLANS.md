@@ -148,7 +148,7 @@ and the `PlayController` enforces per-ruleset placement legality. Engine-first;
 | C3 | engine — thread ruleset through `SessionConfig` + `PlayController` (placement gates + `GameView` fields) | ✅ Done | `fcbbe00` |
 | C4 | web — crapless toggle end-to-end (session store + API + form) + variant-aware felt | ✅ Done | `94061f7` |
 | C5 | lint — drop unused import + reformat after the engine changes | ✅ Done | `15cdd7b` |
-| C6 | docs — README / CLAUDE / PLANS | ✅ Done | _this commit_ |
+| C6 | docs — README / CLAUDE / PLANS | ✅ Done | `de73a16` |
 
 ## Phase 3 backlog
 
