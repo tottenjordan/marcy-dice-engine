@@ -1,4 +1,7 @@
-# Play-mode wallet/cash bankroll model (approved, not yet implemented)
+# Play-mode wallet/cash bankroll model (shipped in Phase 7)
+
+> Historical design note. This model shipped in Phase 7 (see PLANS.md); the
+> rationale below is preserved as the record of why it was built this way.
 
 **Decision (user, this session):** switch the interactive PLAY experience from the
 engine's net-worth bankroll to a **wallet/cash** model. Placing a bet subtracts

@@ -68,7 +68,12 @@ exact values.
 | Place 6 / 8 | 7:6 | `1/66` | 1.515% |
 | Place 5 / 9 | 7:5 | `1/25` | 4.000% |
 | Place 4 / 10 | 9:5 | `1/15` | 6.667% |
+| Place 2 / 12 (crapless) | 11:2 | `1/14` | 7.143% |
+| Place 3 / 11 (crapless) | 11:4 | `1/16` | 6.250% |
 
-True odds ratios (number → win:stake): take (Pass) 4/10→2:1, 5/9→3:2, 6/8→6:5;
-lay (Don't Pass) inverse 4/10→1:2, 5/9→2:3, 6/8→5:6. Dice-total probabilities
-over 36 combos: 2:1, 3:2, 4:3, 5:4, 6:5, 7:6, 8:5, 9:4, 10:3, 11:2, 12:1.
+The crapless place bets both carry a per-roll edge of exactly `1/72`.
+
+True odds ratios (number → win:stake): take (Pass) 4/10→2:1, 5/9→3:2, 6/8→6:5,
+and the crapless points 2/12→6:1, 3/11→3:1; lay (Don't Pass) is the inverse
+(4/10→1:2, 5/9→2:3, 6/8→5:6). Dice-total probabilities over 36 combos: 2:1, 3:2,
+4:3, 5:4, 6:5, 7:6, 8:5, 9:4, 10:3, 11:2, 12:1.

@@ -10,7 +10,7 @@
 ![uv](https://img.shields.io/badge/packaging-uv-DE5FE9?logo=uv&logoColor=white)
 ![Ruff](https://img.shields.io/badge/lint-ruff-261230?logo=ruff&logoColor=white)
 ![ty](https://img.shields.io/badge/types-ty-261230?logo=astral&logoColor=white)
-![pytest](https://img.shields.io/badge/tests-456%20passing-0A9EDC?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/tests-567%20passing-0A9EDC?logo=pytest&logoColor=white)
 ![coverage](https://img.shields.io/badge/coverage-99.7%25-15803D)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![HTMX](https://img.shields.io/badge/HTMX-3366CC?logo=htmx&logoColor=white)
@@ -18,216 +18,135 @@
 
 </div>
 
-Built to learn the exact odds, payouts, and house-edge mechanics of combined
-(hedged) craps strategies, then *play them out*: run deterministic sessions, race
-strategies through Monte Carlo for Risk of Ruin and bankroll distributions, and
-explore it all from a terminal UI or a browser green-felt table.
+**marcy-dice-engine** computes the *exact* odds, payouts, and house edge of craps
+bets — including combined "hedged" strategies — and then lets you **play them
+out**: run deterministic sessions, race strategies through Monte Carlo for Risk of
+Ruin, or sit down at a browser green-felt table and bet a bankroll by hand.
 
-The engine is a pure, I/O-free, fully type-hinted OO core. Money and odds use
-`fractions.Fraction` internally for **exact** arithmetic; floats appear only at a
-single serialization boundary (and in the Monte Carlo aggregation layer). The
-engine returns structured data (no `print`) — thin `examples/`, `craps_tui`, and
-`craps_api` layers do all the formatting and I/O.
+All money and odds use `fractions.Fraction` for **exact** arithmetic — floats
+appear only at the display edge. The engine is pure and I/O-free; thin
+`examples/`, `craps_tui`, and `craps_api` layers do all the printing and I/O.
 
-## Features
+## Three ways to use it
 
-### Engine core (pure stdlib)
-
-- **Dice** — `RandomDice(seed)` (reproducible) and `ScriptedDice` for deterministic
-  scenarios, behind a `Dice` protocol.
-- **GameState** — a come-out / point state machine that also admits Come / Don't
-  Come sub-points.
-- **Bet registry** — exact odds, payouts, and house edges (Pass `7/495`,
-  Don't Pass `3/220`, Place `1/66` · `1/25` · `1/15`, free odds `0`), plus
-  per-roll edges and the 36-combo total-probability table.
-- **Bets** — Pass Line, Don't Pass (bar 12), Take/Lay free odds, Place 4–10, and
-  traveling **Come / Don't Come** (bar 12) built on `Bet` lifecycle hooks
-  (`remains_on_table`, `advance`).
-
-### Analysis & simulation
-
-- **PortfolioAnalyzer** — for a combined set of wagers it reports a
-  **net-payout matrix** (net bankroll change per dice total 2–12) and
-  **dual-lens EV**:
-  - *Lens A — single-roll EV* for the current state (the variance / hedge view), and
-  - *Lens B — house drag* = Σ(amount × house-edge) (the honest long-run cost).
-- **Strategies** — a `Strategy` protocol plus starters: `PassLineStrategy`,
-  `PassLineOddsStrategy`, `DontPassPlaceStrategy`.
-- **Session runner** — `Table` + `run_session`: a deterministic single-session
-  play loop producing a bankroll trajectory (`SessionConfig` → `SessionResult`).
-- **Monte Carlo** — `run_monte_carlo` → `MonteCarloResult`: Risk of Ruin, goal-hit
-  rate, mean / median / stdev ending bankroll, percentiles, mean roll count.
-
-### Interfaces
-
-- **Interactive TUI** — a Textual calculator (`uv run craps-tui`) with an
-  **Analyze** view (net-payout matrix + both EV lenses) and a **Verify** view
-  (golden-verify math self-check).
-- **Web app** — a deployable FastAPI + HTMX play-mode table (`uv run craps-web`):
-  play on a clickable green felt with advisory bet units, a point-ON puck, live
-  bankroll, and coaching hints (see [Web app](#web-app)). Includes a
-  **Crapless Craps** ("Never Ever Craps") variant toggle — only a 7 wins the
-  come-out, every other total (2/3/11/12 included) becomes a point, and the
-  Don't side is not offered.
-
-## Requirements
-
-- Python ≥ 3.11
-- [uv](https://docs.astral.sh/uv/) for packaging and running
+| Surface | Command | What it's for |
+|---|---|---|
+| 🟢 **Web play table** | `uv run craps-web` | Bet a bankroll on a clickable green felt, roll, and watch a live wallet with coaching hints |
+| 📊 **Analyzer TUI** | `uv run craps-tui` | Get the net-payout matrix + dual-lens EV of any bet mix from a terminal |
+| 🐍 **Python library** | `import craps_engine` | Sessions, Monte Carlo, and exact-math analysis with structured (JSON-ready) return types |
 
 ## Quickstart
 
 ```bash
-uv sync --all-groups
-uv run python examples/hedged_dp_place68.py     # static dual-lens analysis
-uv run python examples/simulate_strategies.py   # Monte Carlo strategy race
-uv run craps-tui                                 # interactive TUI calculator
-uv run craps-web                                 # browser play-mode web app
+uv sync --all-groups          # install everything into a local venv
+uv run craps-web              # ① browser play table  → http://localhost:8000/
+uv run craps-tui              # ② terminal odds/EV calculator
+uv run python examples/hedged_dp_place68.py     # ③ a worked analysis
+uv run python examples/simulate_strategies.py   #    a Monte Carlo strategy race
 ```
 
-The hedge demo builds a hedge (Don't Pass 10 + Place 6 / Place 8, point = 4) and
-prints the net-payout matrix and both EV lenses. The teaching moment: the
-don't-bettor looks *favored this roll* (Lens A) yet has already conceded a fixed
-long-run cost (Lens B).
+No manual venv activation and no `pip` — every command runs through `uv`.
 
-```
-matrix:  4: -10   6: +7   7: -2   8: +7
-Lens A (single-roll EV) = 7/9
-Lens B (house drag)     = 7/22
-```
+---
 
-## Web app
+## 🟢 Web app — play mode
 
-A deployable **FastAPI + HTMX play-mode web app** — a browser front end where you
-actually *play* a session: place bets via clickable felt zones or a free-text box,
-roll the dice, and watch a live bankroll with data-driven coaching hints. This is
-distinct from the analyzer TUI below (which computes static odds/EV): the web app
-drives the same pure engine through a `PlayController` and an in-memory session
-store. Web dependencies (FastAPI / uvicorn / Jinja2) live only in the `web`
-dependency group and only inside `src/craps_api/`, mirroring how `craps_tui`
-isolates Textual — the published engine stays stdlib-only.
+A deployable **FastAPI + HTMX** table where you actually *play* a session: place
+bets on clickable felt zones (or a free-text box), roll the dice, and watch a live
+bankroll with data-driven coaching hints. It drives the same pure engine through a
+`PlayController` and an in-memory session store. Web dependencies (FastAPI /
+uvicorn / Jinja2) live only in the `web` dependency group and only inside
+`src/craps_api/`, so the published engine stays stdlib-only.
 
 ```bash
 uv run craps-web        # serves on http://localhost:8000/
 ```
 
-Then open <http://localhost:8000/>: start a game from the form (seed / starting
-stake), then use the clickable felt zones, the free-text bet box, and the roll
-button. Games are **uncapped** — a game ends only on a bust or a win-goal, not a
-roll count.
-
-### Playing on the felt
-
-The board is a green-felt craps table whose zones are clickable tiles. On top of
-that it carries a set of play-mode conveniences:
-
-- **Wallet / cash bankroll** — the bankroll shown is the free cash in hand:
-  placing a bet moves its stake onto the felt and **lowers** the bankroll (and
-  Net), removing a bet returns that cash and **raises** them, and a win credits
-  the profit. At any moment `bankroll + at-risk` equals your net worth. (Only the
-  play view is wallet-based; the analyzer and Monte Carlo keep the net-worth
-  accounting. Bust is judged on net worth, so chips resting on the felt never end
-  the game.)
-- **Optimal place-bet units** — Place payouts only land in whole dollars when the
-  stake is a multiple of the number's unit: Place **6 / 8** in **$6** units
-  (pays 7:6), Place **5 / 9** in **$5** units (pays 7:5), Place **4 / 10** in
-  **$5** units (pays 9:5). The felt enforces this: clicking a Place zone snaps the
-  shared stake to the nearest valid multiple (e.g. $10 → $12 on the 6, $10 on the
-  5), and **pressing** a winning Place bet snaps the grown stake the same way. The
-  unit is also surfaced in each zone's tooltip and a static felt tip. (The JSON
-  API still accepts any exact amount for programmatic clients.)
-- **Point ON indicator** — when a point is established, its box number gets a
-  yellow ring and an "ON" puck.
-- **Free odds behind the line** — once a point is on, a Take Odds slot appears
-  behind the Pass Line (and Lay Odds behind Don't Pass) to back your flat bet at
-  zero house edge. These are true "behind the line" wagers: they require a
-  matching flat bet and are capped at the standard **3-4-5×** table max (3× behind
-  4/10, 4× behind 5/9, 5× behind 6/8) — naked or over-max odds are refused. Odds
-  carry the same **advisory-unit** treatment as Place bets: the true-odds payout
-  only lands in whole dollars on the odds ratio's stake leg (take **6 / 8** in
-  **$5** units, take **5 / 9** in **$2**, take **4 / 10** in **$1**; lay is the
-  inverse — **$6 / $3 / $2**), so clicking a Take/Lay slot snaps the shared stake
-  to that unit and each slot's tooltip advises it. (The JSON API still accepts any
-  exact amount within the table max.)
-- **Free odds on Come / Don't Come** — once a Come (or Don't Come) bet travels to
-  its come-point, a **+ odds** control on that bet's row backs it with free odds
-  (pooled under the same 3-4-5× cap), and the odds chip renders right on the
-  come-point's box. Faithful to a real table, those come-odds ride **OFF on the
-  come-out** by default — a come-point or a 7 there simply returns them — with a
-  per-bet **Come-out: ON/OFF** toggle to call them on so they work through the
-  come-out too.
-- **Crapless craps variant** — tick **Crapless craps** on the new-game form to
-  play "Never Ever Craps": on the come-out only a **7** wins the Pass line and
-  **every other total becomes a point** (nothing craps out), so 2, 3, 11, and 12
-  join the box row as placeable / oddsable points (Place 2/12 pay 11:2, 3/11 pay
-  11:4; free odds 2/12 → 6:1, 3/11 → 3:1). Faithful to real crapless tables, the
-  **Don't side is not offered** (no Don't Pass / Don't Come / Lay), and the felt
-  hides those zones and shows a **Crapless** badge. Standard craps is unchanged.
-  (The toggle is play-mode only; the analyzer and Monte Carlo remain standard.)
-- **Net percentage** — the running Net dollar figure is shown alongside a Net %
-  of the starting bankroll.
-- **Wide-screen no-scroll dashboard** — on wide viewports (`min-width: 1024px`)
-  the felt stays the focal area with the stats, hint, and controls arranged in
-  side panels around it; the narrow / mobile single-column layout is preserved.
-- **Uncapped play** with **press** / **remove** bet operations, a
-  **total-at-risk** badge (every stake on the felt), a **last-10 roll strip**, a
-  **per-roll net** indicator, and **odds-ratio tooltips** on the playable zones.
-
-Refreshed captures of these states. **A note on the Net figure:** the board uses
-a **wallet/cash** model, so placing a bet moves that cash from your bankroll onto
-the felt. Before anything resolves, the Net therefore reads as the *negative of
-the "At risk" amount* — the stakes are **committed, not lost**. Removing a bet (or
-a win) returns that cash to the wallet and the Net moves back up.
+Open <http://localhost:8000/>, start a game from the form (seed / starting stake /
+optional **Crapless** variant), then click the felt and roll. Games are
+**uncapped** — a game ends only on a bust or a win-goal, never a roll count.
 
 ![Fresh come-out board — empty felt in the wide dashboard layout](docs/images/felt-comeout.png)
-*Come-out phase: an empty felt, `$0` At-risk, and `$0` Net — no cash is on the felt yet.*
+
+### What the felt gives you
+
+- **Wallet / cash bankroll** — the bankroll shown is your free cash: placing a bet
+  moves its stake onto the felt and **lowers** it, removing a bet returns the cash
+  and **raises** it, and a win credits the profit. At any moment
+  `bankroll + at-risk` = your net worth. (Bust is judged on net worth, so chips on
+  the felt never end the game. The analyzer and Monte Carlo keep net-worth
+  accounting; only this view is wallet-based.)
+- **Advisory bet units** — payouts only land in whole dollars on the right stake
+  multiple, so clicking a zone snaps the shared stake for you: Place **6/8** → $6s,
+  **5/9/4/10** → $5s; take odds **6/8** → $5s, **5/9** → $2s, **4/10** → $1s (lay
+  is the inverse). Each zone's tooltip advises the unit. (The JSON API still
+  accepts any exact amount.)
+- **Free odds behind the line** — once a point is on, Take/Lay slots appear behind
+  the flat bets to back them at **zero house edge**, requiring a matching flat bet
+  and capped at the standard **3-4-5×** table max (naked or over-max odds are
+  refused).
+- **Free odds on Come / Don't Come** — when a Come bet travels to its come-point, a
+  **+ odds** control backs it (pooled under the same 3-4-5× cap) with the odds chip
+  on that box. True to a real table those come-odds ride **OFF on the come-out** by
+  default, with a per-bet **Come-out: ON/OFF** toggle to call them on.
+- **Crapless Craps variant** — tick **Crapless craps** on the new-game form for
+  "Never Ever Craps": only a **7** wins the come-out and **every other total
+  becomes a point**, so 2/3/11/12 join the box row as placeable / oddsable points
+  (Place 2/12 pay 11:2, 3/11 pay 11:4; free odds 2/12 → 6:1, 3/11 → 3:1). Faithful
+  to real crapless tables the **Don't side is not offered** — the felt hides those
+  zones and shows a **Crapless** badge. Play-mode only; the analyzer and Monte
+  Carlo stay standard.
+- **Trackers & polish** — a point-ON puck (yellow ring + "ON"), a Net % beside the
+  Net dollars, a total-at-risk badge, a last-10 roll strip, a per-roll net
+  indicator, press/remove controls per bet, odds-ratio tooltips, and a wide-screen
+  no-scroll dashboard (the narrow / mobile layout is preserved).
+
+### A hand, step by step
+
+> **Reading the Net:** the board uses a **wallet/cash** model, so placing a bet
+> moves that cash from your bankroll onto the felt. Before anything resolves, Net
+> reads as the *negative of the "At risk" amount* — the stakes are **committed, not
+> lost**. A removal (or a win) returns that cash and Net moves back up.
 
 ![Bets placed on the felt — chips on Pass, Place 6, and Place 8](docs/images/felt-bets.png)
 *Bets placed: Pass Line `$10` + Place 6 `$12` + Place 8 `$12` = `$34` moved onto the
 felt, so Bankroll drops to `$966` and Net reads `-$34` — exactly the `$34` now
-At-risk. This is committed stake, not a loss; remove a bet and the Net climbs back.*
+At-risk. Committed stake, not a loss.*
 
 ![After a roll — dice, per-roll net, roll strip, and Net %](docs/images/felt-postroll.png)
-*After a roll: the come-out roll of 5 **establishes the point** (no bet wins or
-loses), so the per-roll net is `$0` and Net holds at `-$34` — still just the
-committed stakes on the felt, waiting on the point.*
+*After a roll: a come-out 5 **establishes the point** (no bet wins or loses), so the
+per-roll net is `$0` and Net holds at `-$34`, waiting on the point.*
 
 ![Point ON — yellow ring and ON puck plus the Take/Lay odds zones](docs/images/felt-odds.png)
-*Point ON: the yellow ring + "ON" puck on the point's box, with the Take/Lay free-odds zones available.*
+*Point ON: the yellow ring + "ON" puck on the point's box, with the Take/Lay
+free-odds zones now available.*
 
 ![Come bet backed with free odds — come-odds chip on the come-point box plus the row controls](docs/images/felt-comeodds.png)
 *Come odds: a Come bet has travelled to box 10 (blue chip) and is backed with free
 odds (purple chip on the same box). Its row shows a **+ odds** control and a
-**Come-out: OFF** toggle — come-odds ride off on the come-out by default until you
-call them on. Net `-$20` is again just the `$20` committed (the `$10` come bet +
-`$10` odds), not a loss.*
+**Come-out: OFF** toggle. Net `-$20` is just the `$20` committed (`$10` come + `$10`
+odds), not a loss.*
 
-### Regenerating the screenshots
+<details>
+<summary><b>JSON API</b> — the same app exposes a small JSON API under <code>/api</code></summary>
 
-The five screenshots above are produced by `docs/capture_screenshots.py`, a
-PEP 723 standalone script that boots the app on a fixed port and drives the HTMX
-flows headless with Chromium at a fixed seed for reproducibility. Playwright is a
-**script-only inline dependency** of that file — it is deliberately **not** a
-project dependency, so the quality gate and tests never import it. Recipe:
+Usable by programmatic clients (a legal-but-refused bet returns HTTP 200 with
+`ok=false`; an unknown session is 404):
 
-```bash
-uv run --with playwright playwright install chromium   # one-time
-uv run --script docs/capture_screenshots.py            # writes docs/images/*.png
-```
+| Method & path | Purpose |
+|---|---|
+| `POST /api/game` | Create a game (`{seed, starting_bankroll, max_rolls, win_goal, loss_limit, crapless}`) → `{session_id, view}` (201) |
+| `GET  /api/game/{id}` | The current `GameView` |
+| `POST /api/game/{id}/bet` | Place a structured (`{kind, amount[, number]}`) or free-text (`{text}`) bet |
+| `POST /api/game/{id}/roll` | Roll once → `RollOutcome` |
+| `POST /api/game/{id}/bet/{bet_id}/remove` | Take a bet down |
+| `POST /api/game/{id}/bet/{bet_id}/press` | Press a just-won bet by its winnings |
+| `POST /api/game/{id}/bet/{bet_id}/odds-working` | Call a come-odds bet ON/OFF for the come-out |
 
-### JSON API
+</details>
 
-On top of the HTML frontend the same app exposes a small JSON API (all under
-`/api`), usable by programmatic clients:
-
-- `POST /api/game` — create a game; returns `{session_id, view}` (HTTP 201).
-- `GET  /api/game/{session_id}` — the current `GameView` (404 if unknown).
-- `POST /api/game/{session_id}/bet` — place a structured (`{kind, amount[, number]}`)
-  or free-text (`{text}`) bet; a legal-but-refused bet still returns 200 with
-  `ok=false`.
-- `POST /api/game/{session_id}/roll` — roll once; returns the `RollOutcome`.
-
-### Deploy via Docker
+<details>
+<summary><b>Deploy with Docker</b></summary>
 
 The repo ships a `Dockerfile` that runs the web app straight from the synced
 source tree (`uv sync --group web`, then `uv run craps-web`):
@@ -237,13 +156,32 @@ docker build -t craps-web .
 docker run -p 8000:8000 craps-web   # then open http://localhost:8000/
 ```
 
-The image is portable to any container host (e.g. Cloud Run). It runs from source
-rather than from a built wheel on purpose: the wheel packages only `craps_engine`,
-not `craps_api` or its `templates/`/`static/` data files, so `uv sync` (which does
-the editable-style install exposing all of `src/`) is what makes the web app
-available at runtime.
+Portable to any container host (e.g. Cloud Run). It runs from source rather than a
+built wheel on purpose: the wheel packages only `craps_engine`, not `craps_api` or
+its `templates/`/`static/` data files, so `uv sync` (an editable-style install of
+all of `src/`) is what makes the web app available at runtime.
 
-## Interactive TUI
+</details>
+
+<details>
+<summary><b>Regenerating the screenshots</b></summary>
+
+The five screenshots above are produced by `docs/capture_screenshots.py`, a
+PEP 723 standalone script that boots the app on a fixed port and drives the HTMX
+flows headless with Chromium at a fixed seed for reproducibility. Playwright is a
+**script-only inline dependency** of that file — deliberately **not** a project
+dependency, so the quality gate and tests never import it.
+
+```bash
+uv run --with playwright playwright install chromium   # one-time
+uv run --script docs/capture_screenshots.py            # writes docs/images/*.png
+```
+
+</details>
+
+---
+
+## 📊 Analyzer TUI
 
 <details>
 <summary>Textual calculator for static odds/EV analysis (<code>uv run craps-tui</code>)</summary>
@@ -253,36 +191,71 @@ uv run craps-tui
 ```
 
 Type a comma- or newline-separated set of bets and a point, then press **Analyze**
-(`a`) to get the net-payout matrix and both EV lenses (Lens A / Lens B). For
-example:
+(`a`) for the net-payout matrix and both EV lenses. For example:
 
 ```
 dontpass:10, place 6:6, place 8:6      point = 4
 ```
 
-Press **Verify** (`v`) to run the golden math self-check (see below). `textual`
-lives in its own `ui` dependency group so it never becomes a runtime dependency
-of the engine (`[project.dependencies]` stays empty); `[tool.uv] default-groups`
-syncs it into the local dev venv automatically, so `uv run craps-tui` just works.
+Press **Verify** (`v`) to run the golden math self-check (see
+[Verify the math](#verify-the-math)). `textual` lives in its own `ui` dependency
+group so it never becomes a runtime dependency of the engine
+(`[project.dependencies]` stays empty); `[tool.uv] default-groups` syncs it into
+the dev venv, so `uv run craps-tui` just works.
 
 </details>
+
+---
+
+## 🐍 Using the engine as a library
+
+The engine is a pure, fully type-hinted OO core that returns structured,
+JSON-ready data (no `print`). The pieces:
+
+- **Dice** — `RandomDice(seed)` (reproducible) and `ScriptedDice` for deterministic
+  scenarios, behind a `Dice` protocol.
+- **GameState + Ruleset** — a come-out / point state machine that also admits
+  Come / Don't Come sub-points. A frozen `Ruleset` (`STANDARD` / `CRAPLESS`) rides
+  on the state and drives the come-out rules.
+- **Bet registry** — exact odds, payouts, and house edges (Pass `7/495`,
+  Don't Pass `3/220`, Place `1/66` · `1/25` · `1/15`, free odds `0`, plus the
+  crapless place edges `1/14` · `1/16`), per-roll edges, and the 36-combo
+  total-probability table.
+- **Bets** — Pass Line, Don't Pass (bar 12), Take/Lay free odds, Place bets
+  (4–10, plus 2/3/11/12 under crapless), and traveling **Come / Don't Come** built
+  on `Bet` lifecycle hooks (`remains_on_table`, `advance`).
+- **PortfolioAnalyzer** — for a combined set of wagers, a **net-payout matrix**
+  (net bankroll change per total 2–12) and **dual-lens EV**: *Lens A* single-roll
+  EV (the variance / hedge view) and *Lens B* house drag = Σ(amount × house-edge)
+  (the honest long-run cost).
+- **Strategies** — a `Strategy` protocol plus starters (`PassLineStrategy`,
+  `PassLineOddsStrategy`, `DontPassPlaceStrategy`).
+- **Session runner** — `Table` + `run_session`: a deterministic single-session
+  loop producing a bankroll trajectory (`SessionConfig` → `SessionResult`).
+- **Monte Carlo** — `run_monte_carlo` → `MonteCarloResult`: Risk of Ruin, goal-hit
+  rate, mean / median / stdev ending bankroll, percentiles, mean roll count.
+
+The `examples/hedged_dp_place68.py` demo builds a hedge (Don't Pass 10 + Place 6 /
+Place 8, point = 4) and prints the net-payout matrix and both EV lenses. The
+teaching moment: the don't-bettor looks *favored this roll* (Lens A) yet has
+already conceded a fixed long-run cost (Lens B).
+
+```
+matrix:  4: -10   6: +7   7: -2   8: +7
+Lens A (single-roll EV) = 7/9
+Lens B (house drag)     = 7/22
+```
+
+---
 
 ## Verify the math
 
 Golden-verify recomputes a small set of canonical scenarios (the Don't Pass +
-Place 6/8 hedge plus a lone Pass Line and a lone Place 6) through the real engine
-and asserts each result equals an independently hand-derived exact `Fraction`
-oracle. It runs both as `tests/test_golden.py` and behind the TUI's Verify
-action, so any drift in the engine's arithmetic is caught immediately.
-
-## Quality gate
-
-```bash
-uv run ruff format --check && uv run ruff check && uv run ty check src/ && uv run pytest
-```
-
-Currently: ruff + ty clean, 456 tests passing, 99.70% coverage
-(across `craps_engine` + `craps_tui` + `craps_api`).
+Place 6/8 hedge, a lone Pass Line, and a lone Place 6) through the real engine and
+asserts each result equals an independently hand-derived exact `Fraction` oracle.
+It runs both as `tests/test_golden.py` and behind the TUI's Verify action, so any
+drift in the engine's arithmetic is caught immediately. The canonical oracle
+values live in [CODE_STANDARDS.md](./CODE_STANDARDS.md#exact-craps-math-reference-table).
 
 ## Project layout
 
@@ -304,7 +277,7 @@ src/craps_tui/      Textual UI + golden-verify (the only place textual/I/O live)
   viewmodel.py   pure parse/format seam over the engine
   app.py         Textual App (Analyze + Verify actions)
   __main__.py    console entry point (craps-tui)
-src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app — advisory place-bet + free-odds units, point-ON puck, net %, crapless-craps variant toggle, wide dashboard (only place web I/O lives)
+src/craps_api/      FastAPI JSON API + HTMX green-felt play-mode web app
   app.py            FastAPI factory: JSON /api routes + HTMX HTML routes
   session_store.py  in-memory session store over PlayController
   board.py          pure board-context builder for the HTML partial
@@ -316,15 +289,23 @@ tests/           pytest suite
 docs/notes/      session notes
 ```
 
-## Roadmap
-
-- Affordability constraints on the play-mode wallet (block a bet larger than the
-  cash in hand — placement deduction already lands in the wallet view)
-- Bankroll-trajectory charts on the existing serialization-ready return types
-- A strategy DSL for declaring betting policies
-
 ## Development
 
 Tooling: `uv` (packaging), `ruff` (lint + format), `ty` (type-check),
-`pytest` + `pytest-cov` (test). See [CODE_STANDARDS.md](./CODE_STANDARDS.md) for
-conventions and [PLANS.md](./PLANS.md) for task status.
+`pytest` + `pytest-cov` (test). Run the full quality gate before every commit:
+
+```bash
+uv run ruff format --check && uv run ruff check && uv run ty check src/ && uv run pytest
+```
+
+Currently: ruff + ty clean, **567 tests passing, 99.73% coverage** (across
+`craps_engine` + `craps_tui` + `craps_api`). See
+[CODE_STANDARDS.md](./CODE_STANDARDS.md) for conventions and
+[PLANS.md](./PLANS.md) for task history.
+
+### Roadmap
+
+- Affordability constraints on the play-mode wallet (block a bet larger than the
+  cash in hand — the placement deduction already lands in the wallet view).
+- Bankroll-trajectory charts on the existing serialization-ready return types.
+- A strategy DSL for declaring betting policies.

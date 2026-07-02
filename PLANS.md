@@ -20,7 +20,7 @@ Goal: build an exact-math craps betting-strategy engine, one reviewable task at 
 
 Status legend: ✅ Done · 🚧 In progress · ⬜ Pending. Commit = short SHA of the commit completing the item.
 
-## Phase 2 (in progress)
+## Phase 2 (engine + TUI — done)
 
 Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Order A → B → C.
 
@@ -55,7 +55,7 @@ deployable FastAPI + HTMX web app. Order W1 → W6.
 | W5 | craps_api/ — HTMX browser frontend (templates + static) | ✅ Done | `aad4b80` |
 | W6 | Dockerfile + deploy/docs sync (README/CLAUDE/PLANS) | ✅ Done | `2e33622` |
 
-## Phase 4 (visual craps-table UI — in progress)
+## Phase 4 (visual craps-table UI — done)
 
 Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Turn the plain board
 into a visual green-felt table with clickable bet zones + chips. All work stays
@@ -67,7 +67,7 @@ in `craps_api/` (no engine changes, no new routes). Order T1 → T2 → T3.
 | T2 | _board.html + style.css — clickable felt with chips + dimmed unsupported | ✅ Done | `26e0568` |
 | T3 | docs sync (README/CLAUDE) for the visual table | ➡️ Folded into Phase 5 P7 | |
 
-## Phase 5 (play-feature upgrades — in progress)
+## Phase 5 (play-feature upgrades — done)
 
 Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Uncapped play,
 press/remove bet ops, and felt trackers (odds tooltips, risk total, last-10 roll
@@ -84,7 +84,7 @@ Order P1 → P7. Deps: P4 needs P1+P3; P5 needs P1+P2+P3; P6 needs P4+P5; P7 las
 | P6 | ui — felt trackers + per-bet press/remove controls | ✅ Done | `3a830fd` |
 | P7 | docs — README/CLAUDE + captured UI screenshots (absorbs T3) | ➡️ Redone as Phase 6 Q5 | |
 
-## Phase 6 (betting guidance + felt polish — in progress)
+## Phase 6 (betting guidance + felt polish — done)
 
 Plan: `~/.claude/plans/gleaming-wiggling-yao.md` (approved). Act on play-mode UI
 feedback: advisory optimal place-bet units (tooltip + tip, never enforced), a
