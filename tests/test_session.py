@@ -354,9 +354,7 @@ class TestRulesetThreading:
     def test_crapless_config_makes_three_a_point(self) -> None:
         """A come-out 3 under crapless is NO_ACTION (point set), not a Pass loss."""
         dice = ScriptedDice([(1, 2)])  # 3
-        config = SessionConfig(
-            starting_bankroll=Fraction(300), max_rolls=1, ruleset=CRAPLESS
-        )
+        config = SessionConfig(starting_bankroll=Fraction(300), max_rolls=1, ruleset=CRAPLESS)
         result = run_session(dice, _PassLineProbe(10), config)
         # Standard would lose the Pass line on a come-out 3; crapless keeps it.
         assert result.ending_bankroll == Fraction(300)

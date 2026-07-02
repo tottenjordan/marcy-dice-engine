@@ -6,7 +6,7 @@ import dataclasses
 
 import pytest
 
-from craps_engine.ruleset import CRAPLESS, STANDARD, Ruleset
+from craps_engine.ruleset import CRAPLESS, STANDARD
 
 
 def test_standard_field_values() -> None:
