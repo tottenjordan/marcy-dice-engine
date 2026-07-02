@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from craps_engine.dice import RandomDice
 from craps_engine.play import PlayController
+from craps_engine.ruleset import CRAPLESS, STANDARD
 from craps_engine.session import SessionConfig
 
 if TYPE_CHECKING:
@@ -45,7 +46,7 @@ class SessionStore:
         """Start with no live games."""
         self._games: dict[str, PlayController] = {}
 
-    def create(
+    def create(  # noqa: PLR0913 (a config funnel: each kwarg is one SessionConfig knob)
         self,
         *,
         starting_bankroll: int,
@@ -53,6 +54,7 @@ class SessionStore:
         win_goal: int | None = None,
         loss_limit: int = 0,
         seed: int | None = None,
+        crapless: bool = False,
     ) -> tuple[str, PlayController]:
         """Build and store a new game, returning ``(session_id, controller)``.
 
@@ -64,12 +66,16 @@ class SessionStore:
         a game runs to bust or its win goal rather than a roll cap; the config
         accepts ``None`` unchanged. Batch/programmatic callers may still pass an
         int to cap the game at that many rolls.
+
+        ``crapless`` selects the crapless-craps ruleset (only a 7 is a come-out
+        natural, 2/3/11/12 become points, no Don't side); the default is standard.
         """
         config = SessionConfig(
             starting_bankroll=Fraction(starting_bankroll),
             max_rolls=max_rolls,
             win_goal=None if win_goal is None else Fraction(win_goal),
             loss_limit=Fraction(loss_limit),
+            ruleset=CRAPLESS if crapless else STANDARD,
         )
         dice: Dice = RandomDice(seed)
         controller = PlayController(dice, config)

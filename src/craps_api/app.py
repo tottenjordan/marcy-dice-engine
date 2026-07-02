@@ -90,6 +90,7 @@ class NewGameRequest(BaseModel):
     max_rolls: int | None = None
     win_goal: int | None = None
     loss_limit: int = 0
+    crapless: bool = False
 
 
 class OddsWorkingRequest(BaseModel):
@@ -248,6 +249,7 @@ def create_app() -> FastAPI:  # noqa: C901 (a route-registration factory: each r
             win_goal=body.win_goal,
             loss_limit=body.loss_limit,
             seed=body.seed,
+            crapless=body.crapless,
         )
         return {"session_id": session_id, "view": controller.snapshot().to_dict()}
 
@@ -319,18 +321,20 @@ def create_app() -> FastAPI:  # noqa: C901 (a route-registration factory: each r
         request: Request,
         starting_bankroll: Annotated[int, Form()] = _DEFAULT_STARTING_BANKROLL,
         seed: Annotated[int | None, Form()] = None,
+        crapless: Annotated[bool, Form()] = False,  # noqa: FBT002 (a form field: an unchecked checkbox sends nothing -> False)
     ) -> HTMLResponse:
         """Create a game from the form and return its come-out board partial.
 
-        The web form intentionally exposes only seed/stake; web games are
-        UNCAPPED (``max_rolls`` defaults to ``None``) and run to bust or, if set,
-        a win goal. Win-goal and loss-limit fall to the store defaults (the JSON
-        ``POST /api/game`` route supports the full knob set for programmatic
+        The web form exposes seed/stake plus the ``crapless`` variant toggle; web
+        games are UNCAPPED (``max_rolls`` defaults to ``None``) and run to bust or,
+        if set, a win goal. Win-goal and loss-limit fall to the store defaults (the
+        JSON ``POST /api/game`` route supports the full knob set for programmatic
         clients).
         """
         session_id, controller = store.create(
             starting_bankroll=starting_bankroll,
             seed=seed,
+            crapless=crapless,
         )
         return _render_board(templates, request, session_id=session_id, view=controller.snapshot())
 

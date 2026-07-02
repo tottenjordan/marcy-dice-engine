@@ -96,6 +96,9 @@ def _base_payload(**overrides: object) -> dict[str, object]:
         "game_over": False,
         "game_over_reason": None,
         "odds_available": False,
+        "variant": "standard",
+        "point_numbers": [4, 5, 6, 8, 9, 10],
+        "allow_dont": True,
     }
     payload.update(overrides)
     return payload
@@ -1249,3 +1252,65 @@ def test_net_percent_renders_after_resolving_roll() -> None:
     # The net-percent badge is present and carries a "(...%)" figure.
     assert "net-pct" in html
     assert re.search(r"net-pct[^>]*>\(\S*%\)", html) is not None
+
+
+# --- crapless craps variant -------------------------------------------------
+
+
+def test_builder_surfaces_variant_fields() -> None:
+    """The builder copies variant/point_numbers/allow_dont through to the context."""
+    ctx = build_board_context(  # type: ignore[arg-type]
+        _base_payload(
+            variant="crapless",
+            point_numbers=[2, 3, 4, 5, 6, 8, 9, 10, 11, 12],
+            allow_dont=False,
+        ),
+        session_id="x",
+        hint="",
+    )
+    assert ctx["variant"] == "crapless"
+    assert ctx["point_numbers"] == [2, 3, 4, 5, 6, 8, 9, 10, 11, 12]
+    assert ctx["allow_dont"] is False
+
+
+def test_zone_odds_include_crapless_numbers() -> None:
+    """The static odds/unit tables carry the crapless place + odds entries."""
+    ctx = build_board_context(_base_payload(), session_id="x", hint="")  # type: ignore[arg-type]
+    zo = ctx["zone_odds"]
+    assert zo["place-2"] == "11:2"
+    assert zo["place-12"] == "11:2"
+    assert zo["place-3"] == "11:4"
+    assert zo["place-11"] == "11:4"
+    assert zo["odds-2"] == "6:1"
+    assert zo["odds-3"] == "3:1"
+    pu = ctx["place_units"]
+    assert pu["place-2"] == 2
+    assert pu["place-3"] == 4
+    assert ctx["odds_units"]["odds-2"] == 1
+
+
+def test_crapless_board_shows_extra_boxes_and_hides_dont_side() -> None:
+    """A crapless board renders 2/3/11/12 boxes, omits the Don't side + badge."""
+    client = _client()
+    _sid, html = _start_game(client, seed=1, starting_bankroll=300, crapless="true")
+    # Extra crapless box buttons exist (hx-vals for place 2/3/11/12).
+    for n in (2, 3, 11, 12):
+        assert f'"spec": "place {n}"' in html
+    # No Don't side anywhere on the crapless felt.
+    assert "Don't Come" not in html
+    assert "Don't Pass Bar" not in html
+    # The crapless badge + variant-aware come-out hint are present.
+    assert "Crapless" in html
+    assert "nothing craps out" in html
+
+
+def test_standard_board_unchanged_keeps_dont_side() -> None:
+    """A standard board still shows 6 boxes + the Don't side and no crapless badge."""
+    client = _client()
+    _sid, html = _start_game(client, seed=1, starting_bankroll=300)
+    assert "Don't Come" in html
+    assert "Don't Pass Bar" in html
+    assert "Crapless" not in html
+    # The standard-only numbers appear; the crapless-only ones do not.
+    assert '"spec": "place 6"' in html
+    assert '"spec": "place 2"' not in html

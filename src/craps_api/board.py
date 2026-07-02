@@ -34,9 +34,12 @@ if TYPE_CHECKING:
 # its glyph. Index 0 is unused (dice never show 0 pips).
 _DIE_FACES = ("", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅")
 
-# The box numbers a Place / Free-Odds / Lay bet can sit on. Iterated once at
-# import to build the static odds-tip table below.
-_POINT_NUMBERS: tuple[int, ...] = (4, 5, 6, 8, 9, 10)
+# The box numbers a Place / Free-Odds / Lay bet can sit on across BOTH rulesets.
+# Iterated once at import to build the static odds-tip / unit tables below, which
+# are therefore supersets covering the crapless points (2/3/11/12) too; a standard
+# board simply never renders those extra boxes. The felt's box row iterates the
+# LIVE ``point_numbers`` from the view, so the variant decides what actually shows.
+_POINT_NUMBERS: tuple[int, ...] = (2, 3, 4, 5, 6, 8, 9, 10, 11, 12)
 
 
 def _ratio_label(ratio: RatioOdds) -> str:
@@ -291,6 +294,15 @@ class BoardContext(TypedDict):
     #: Optional one-line notice from the last action (e.g. a bet refusal). Empty
     #: string when there is nothing to flash, so the template can guard on it.
     flash: str
+    #: The rules variant name (``"standard"`` / ``"crapless"``), so the template
+    #: can badge the crapless felt and pick variant-aware tips.
+    variant: str
+    #: The point/box numbers this variant offers (sorted). The felt's box row
+    #: iterates THIS instead of a hard-coded list, so crapless shows 2/3/11/12.
+    point_numbers: list[int]
+    #: Whether the Don't side is offered; the template hides all Don't zones when
+    #: ``False`` (crapless).
+    allow_dont: bool
 
 
 def _fraction_from_payload(payload: FractionPayload) -> Fraction:
@@ -653,4 +665,7 @@ def build_board_context(
         "odds_available": view["odds_available"],
         "hint": hint,
         "flash": flash,
+        "variant": view["variant"],
+        "point_numbers": view["point_numbers"],
+        "allow_dont": view["allow_dont"],
     }

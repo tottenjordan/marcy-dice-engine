@@ -32,7 +32,8 @@
     </div>
     <div class="stat">
       <span class="label">Phase</span>
-      <span class="value">{{ phase }}{% if point is not none %} (point {{ point }}){% endif %}</span>
+      <span class="value">{{ phase }}{% if point is not none %} (point {{ point }}){% endif %}
+        {% if variant == "crapless" %}<span class="badge-crapless" title="Crapless craps: only a 7 is a come-out natural; 2/3/11/12 are points; no Don't side">Crapless</span>{% endif %}</span>
     </div>
     <div class="stat">
       <span class="label">Rolls used</span>
@@ -122,7 +123,8 @@
   <div class="felt" aria-label="Craps table">
     {# --- Place / box numbers row (playable) --- #}
     <div class="felt-boxes">
-      {% for n in [4, 5, 6, 8, 9, 10] %}
+      {# Iterate the LIVE point numbers so crapless shows 2/3/11/12 too. #}
+      {% for n in point_numbers %}
       <button class="zone zone-place{% if point == n %} zone-point{% endif %}" type="button"
               {{ unit_pays(place_units, 'place-' ~ n, 'Place ' ~ n) }}
               hx-post="/game/{{ session_id }}/bet"
@@ -134,14 +136,18 @@
         {% if point == n %}<span class="point-puck" aria-label="Point is {{ n }}">ON</span>{% endif %}
         {{ chip("place-" ~ n) }}
         {{ chip("come-" ~ n, "chip-come") }}
-        {{ chip("dontcome-" ~ n, "chip-come") }}
+        {% if allow_dont %}{{ chip("dontcome-" ~ n, "chip-come") }}{% endif %}
         {# Free odds backing a come-point (≠ puck point) render on the box too. #}
         {{ chip("come-odds-" ~ n, "chip-odds") }}
-        {{ chip("come-lay-" ~ n, "chip-odds") }}
+        {% if allow_dont %}{{ chip("come-lay-" ~ n, "chip-odds") }}{% endif %}
       </button>
       {% endfor %}
     </div>
+    {% if variant == "crapless" %}
+    <p class="felt-tip">Tip: place 6 &amp; 8 in $6, 5/9/4/10 in $5, 2 &amp; 12 in $2, 3 &amp; 11 in $4 for exact payouts.</p>
+    {% else %}
     <p class="felt-tip">Tip: place 6 &amp; 8 in $6 units; 5, 9, 4 &amp; 10 in $5 units for exact payouts.</p>
+    {% endif %}
 
     {# --- Come (large playable area) --- #}
     <button class="zone zone-come" type="button"
@@ -155,7 +161,8 @@
       {{ chip("come") }}
     </button>
 
-    {# --- Don't Come (strip playable) --- #}
+    {# --- Don't Come (strip playable) — not offered in crapless craps --- #}
+    {% if allow_dont %}
     <button class="zone zone-dontcome" type="button"
             aria-label="Don't Come"
             hx-post="/game/{{ session_id }}/bet"
@@ -166,6 +173,7 @@
       Don't Come
       {{ chip("dontcome") }}
     </button>
+    {% endif %}
 
     {# --- Field (dimmed decoration — NOT playable) --- #}
     <div class="zone zone-dim zone-field" aria-disabled="true">
@@ -173,7 +181,8 @@
       <span class="zone-sub">2 3 4 9 10 11 12</span>
     </div>
 
-    {# --- Don't Pass Bar + Lay Odds (playable; odds gated) --- #}
+    {# --- Don't Pass Bar + Lay Odds (playable; odds gated) — hidden in crapless --- #}
+    {% if allow_dont %}
     <div class="felt-line felt-line-dont">
       <button class="zone zone-dontpass" type="button"
               {{ pays('dontpass', "Don't Pass Bar") }}
@@ -205,6 +214,7 @@
       </button>
       {% endif %}
     </div>
+    {% endif %}
 
     {# --- Pass Line + Take Odds (playable; odds gated) --- #}
     <div class="felt-line felt-line-pass">

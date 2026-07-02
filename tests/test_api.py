@@ -455,3 +455,38 @@ def test_win_goal_defaults_and_custom() -> None:
     resp = client.post(f"/api/game/{session_id}/roll").json()
     assert resp["view"]["game_over"] is True
     assert resp["view"]["game_over_reason"] == "goal reached"
+
+
+# --- crapless craps variant -------------------------------------------------
+
+
+def test_new_game_crapless_view_and_placement() -> None:
+    """POST /api/game {crapless:true} yields a crapless view; place 2 ok, dontpass refused."""
+    client = _client()
+    session_id, view = _new_game(client, seed=1, starting_bankroll=300, crapless=True)
+    assert view["variant"] == "crapless"
+    assert view["allow_dont"] is False
+    assert 2 in view["point_numbers"]
+    assert 11 in view["point_numbers"]
+    # place 2 is legal under crapless.
+    placed = client.post(
+        f"/api/game/{session_id}/bet", json={"kind": "place", "number": 2, "amount": 6}
+    ).json()
+    assert placed["ok"] is True
+    # The Don't side is refused.
+    refused = client.post(
+        f"/api/game/{session_id}/bet", json={"kind": "dontpass", "amount": 10}
+    ).json()
+    assert refused["ok"] is False
+
+
+def test_new_game_defaults_to_standard_variant() -> None:
+    """Omitting crapless yields the standard variant, and place 2 is refused there."""
+    client = _client()
+    session_id, view = _new_game(client, seed=1, starting_bankroll=300)
+    assert view["variant"] == "standard"
+    assert view["allow_dont"] is True
+    refused = client.post(
+        f"/api/game/{session_id}/bet", json={"kind": "place", "number": 2, "amount": 6}
+    ).json()
+    assert refused["ok"] is False

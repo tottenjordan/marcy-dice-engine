@@ -26,6 +26,11 @@
       <label>Starting stake
         <input type="number" name="starting_bankroll" value="300" min="1">
       </label>
+      {# Unchecked sends nothing, so the Form default (False = standard) applies. #}
+      <label class="checkbox-field">
+        <input type="checkbox" name="crapless" value="true">
+        Crapless craps (7 wins the come-out; 2/3/11/12 are points; no Don't side)
+      </label>
       <button type="submit">Start game</button>
     </form>
 
